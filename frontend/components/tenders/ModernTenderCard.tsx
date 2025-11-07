@@ -4,15 +4,17 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Building2, FileText, ExternalLink, Clock } from "lucide-react";
+import { Calendar, Building2, FileText, ExternalLink, Clock, AlertTriangle, Users } from "lucide-react";
 import Link from "next/link";
 import { Tender } from "@/lib/api";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface TenderCardProps {
   tender: Tender;
 }
 
 export function ModernTenderCard({ tender }: TenderCardProps) {
+  const { t } = useLanguage();
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'غير محدد';
     const date = new Date(dateString);
@@ -33,16 +35,19 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
     };
     return colors[category] || "bg-gray-500/10 text-gray-700 border-gray-500/20";
   };
+  
+  const isPreTenderMeeting = tender.category === "pre_tenders";
 
   const getCategoryLabel = (category: string | null) => {
-    if (!category) return 'غير محدد';
-    const labels: Record<string, string> = {
-      opening: "مناقصة مفتوحة",
-      closing: "على وشك الإغلاق",
-      pre_tenders: "ما قبل المناقصة",
-      winning: "مناقصة فائزة",
+    if (!category) return t('Unknown', 'غير محدد');
+    const labels: Record<string, { en: string; ar: string }> = {
+      opening: { en: "Open Tender", ar: "مناقصة مفتوحة" },
+      closing: { en: "Closing Soon", ar: "على وشك الإغلاق" },
+      pre_tenders: { en: "Pre-Tender Meeting", ar: "اجتماع ما قبل المناقصة" },
+      winning: { en: "Awarded", ar: "مناقصة فائزة" },
     };
-    return labels[category] || category;
+    const label = labels[category];
+    return label ? t(label.en, label.ar) : category;
   };
 
   return (
@@ -56,11 +61,31 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="secondary" className="gap-1">
                 <FileText className="h-3 w-3" />
-                {tender.tender_number || 'غير محدد'}
+                {tender.tender_number || t('Not specified', 'غير محدد')}
               </Badge>
-              <Badge className={getCategoryColor(tender.category)}>
-                {getCategoryLabel(tender.category)}
-              </Badge>
+              
+              {/* Pre-Tender Meeting Badge */}
+              {isPreTenderMeeting && (
+                <Badge className="bg-blue-500/10 text-blue-700 border-blue-500/20 gap-1">
+                  <Users className="h-3 w-3" />
+                  {getCategoryLabel(tender.category)}
+                </Badge>
+              )}
+              
+              {/* Regular Category Badge */}
+              {!isPreTenderMeeting && (
+                <Badge className={getCategoryColor(tender.category)}>
+                  {getCategoryLabel(tender.category)}
+                </Badge>
+              )}
+              
+              {/* Postponed Badge */}
+              {(tender as any).is_postponed && (
+                <Badge className="bg-red-500/10 text-red-700 border-red-500/20 gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t('Postponed', 'مؤجل')}
+                </Badge>
+              )}
             </div>
           </div>
         </div>

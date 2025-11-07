@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Text, TIMESTAMP, ARRAY, CheckConstraint, Index, Numeric, ForeignKey, REAL
+from sqlalchemy import Column, BigInteger, Text, TIMESTAMP, ARRAY, CheckConstraint, Index, Numeric, ForeignKey, REAL, Boolean
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -26,6 +26,16 @@ class Tender(Base):
     facts_en = Column(ARRAY(Text))
     hash = Column(Text, unique=True, nullable=False, index=True)
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    
+    # Postponement tracking
+    is_postponed = Column(Boolean, default=False)
+    original_deadline = Column(TIMESTAMP(timezone=True))
+    deadline_history = Column(JSONB)  # Array of {deadline, changed_at, reason}
+    postponement_reason = Column(Text)
+    
+    # Pre-tender meeting info
+    meeting_date = Column(TIMESTAMP(timezone=True))
+    meeting_location = Column(Text)
     
     __table_args__ = (
         Index('idx_tenders_published_at', 'published_at'),

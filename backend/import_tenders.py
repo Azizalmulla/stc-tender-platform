@@ -38,12 +38,17 @@ def import_tenders():
         for i, tender_data in enumerate(tenders, 1):
             print(f"\n[{i}/{len(tenders)}] Processing: {tender_data['tender_number']}")
             
-            # Check if already exists
+            # Check if already exists by hash (exact duplicate)
             existing = db.query(Tender).filter(Tender.hash == tender_data['hash']).first()
             if existing:
                 print(f"  ⏭️  Skipped (duplicate)")
                 skipped += 1
                 continue
+            
+            # Check for same tender by number (to detect postponements)
+            existing_by_number = db.query(Tender).filter(
+                Tender.tender_number == tender_data.get('tender_number')
+            ).first() if tender_data.get('tender_number') else None
             
             # Prepare text for AI
             text = f"{tender_data.get('title', '')}\\n{tender_data.get('description', '')}"
@@ -67,13 +72,33 @@ def import_tenders():
             # Generate embedding
             embedding = ai_service.generate_embedding(text)
             
+            # Check for postponement
+            new_deadline = extracted.get('deadline')
+            is_postponed = False
+            original_deadline = None
+            deadline_history = None
+            postponement_reason = None
+            
+            if existing_by_number and existing_by_number.deadline and new_deadline:
+                if new_deadline > existing_by_number.deadline:
+                    is_postponed = True
+                    original_deadline = existing_by_number.original_deadline or existing_by_number.deadline
+                    deadline_history = existing_by_number.deadline_history or []
+                    deadline_history.append({
+                        'deadline': existing_by_number.deadline.isoformat(),
+                        'changed_at': datetime.now().isoformat(),
+                        'reason': 'Deadline extended'
+                    })
+                    postponement_reason = f"Deadline moved from {existing_by_number.deadline.date()} to {new_deadline.date()}"
+                    print(f"  ⚠️  POSTPONEMENT DETECTED: {postponement_reason}")
+            
             # Create tender record
             tender = Tender(
                 title=tender_data['title'],
                 tender_number=tender_data.get('tender_number'),
                 url=tender_data['url'],
                 published_at=tender_data['published_at'],
-                deadline=extracted.get('deadline'),
+                deadline=new_deadline,
                 ministry=tender_data.get('ministry', extracted.get('ministry')),
                 category=tender_data.get('category'),
                 body=tender_data.get('description', ''),
@@ -84,6 +109,10 @@ def import_tenders():
                 lang=tender_data.get('language', 'ar'),
                 hash=tender_data['hash'],
                 attachments=None,
+                is_postponed=is_postponed,
+                original_deadline=original_deadline,
+                deadline_history=deadline_history,
+                postponement_reason=postponement_reason,
             )
             
             db.add(tender)
