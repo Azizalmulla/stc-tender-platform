@@ -1,5 +1,5 @@
 "use client";
-
+// Updated to connect to production backend
 import { useQuery } from "@tanstack/react-query";
 import { getTenders, getTenderStats } from "@/lib/api";
 import { useState } from "react";

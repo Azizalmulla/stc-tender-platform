@@ -52,7 +52,11 @@ class Settings(BaseSettings):
     MAX_SEARCH_RESULTS: int = 50
     
     # CORS
-    CORS_ORIGINS: list = ["http://localhost:3000", "https://*.vercel.app"]
+    CORS_ORIGINS: list = [
+        "http://localhost:3000",
+        "https://frontend-ogdswxda6-azizalmulla16-gmailcoms-projects.vercel.app",
+        "https://*.vercel.app"
+    ]
     
     # Cron Jobs
     CRON_SECRET: Optional[str] = None  # Secret token to protect cron endpoints
