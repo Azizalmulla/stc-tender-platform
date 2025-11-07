@@ -11,8 +11,8 @@ interface TenderCardProps {
   tender: {
     id: number;
     title: string | null;
-    tender_number: string;
-    ministry: string;
+    tender_number: string | null;
+    ministry: string | null;
     category: string;
     published_at: string;
     deadline?: string | null;
@@ -62,7 +62,7 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="secondary" className="gap-1">
                 <FileText className="h-3 w-3" />
-                {tender.tender_number}
+                {tender.tender_number || 'غير محدد'}
               </Badge>
               <Badge className={getCategoryColor(tender.category)}>
                 {getCategoryLabel(tender.category)}
@@ -76,7 +76,7 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
         {/* Ministry */}
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Building2 className="h-4 w-4" />
-          <span>{tender.ministry}</span>
+          <span>{tender.ministry || 'غير محدد'}</span>
         </div>
 
         {/* Dates */}
