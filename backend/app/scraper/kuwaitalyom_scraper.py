@@ -86,18 +86,29 @@ class KuwaitAlyomScraper:
                 allow_redirects=True
             )
             
+            # DEBUG: Log EVERYTHING about the login response
+            logger.info(f"📍 Login Response URL: {login_response.url}")
+            logger.info(f"📊 Login Response Status: {login_response.status_code}")
+            logger.info(f"🍪 Session Cookies: {dict(self.session.cookies)}")
+            
+            # Show first 1000 chars of response for debugging
+            response_preview = login_response.text[:1000] if len(login_response.text) > 1000 else login_response.text
+            logger.info(f"📄 Login Response Preview:\n{response_preview}")
+            
+            # Check our search strings
+            has_user = 'المستخدم' in login_response.text
+            has_logout = 'تسجيل الخروج' in login_response.text
+            logger.info(f"🔍 Contains 'المستخدم': {has_user}")
+            logger.info(f"🔍 Contains 'تسجيل الخروج': {has_logout}")
+            
             # Check if login successful by looking for user info in response
-            if 'المستخدم' in login_response.text or 'تسجيل الخروج' in login_response.text:
+            if has_user or has_logout:
                 logger.info("✅ Successfully logged in to Kuwait Al-Yawm")
                 self.is_authenticated = True
                 return True
             else:
                 logger.error("❌ Login failed - invalid credentials or session issue")
-                logger.error(f"Response URL: {login_response.url}")
-                logger.error(f"Response status: {login_response.status_code}")
-                # Log response snippet for debugging
-                response_preview = login_response.text[:500] if len(login_response.text) > 500 else login_response.text
-                logger.error(f"Response preview: {response_preview}")
+                logger.error("❌ Could not find user indicators in response")
                 return False
                 
         except Exception as e:
@@ -136,11 +147,16 @@ class KuwaitAlyomScraper:
             category_page_url = f"{self.base_url}/online/AdsCategory/{category_id}"
             page_response = self.session.get(category_page_url)
             
+            logger.info(f"📍 Category Page URL: {page_response.url}")
+            logger.info(f"📊 Category Page Status: {page_response.status_code}")
+            logger.info(f"🍪 Session Cookies After Page Visit: {dict(self.session.cookies)}")
+            
             if page_response.status_code != 200:
                 logger.error(f"❌ Failed to access category page: {page_response.status_code}")
+                logger.error(f"Response preview: {page_response.text[:500]}")
                 return []
             
-            logger.info(f"✅ Category page loaded, now fetching tender data...")
+            logger.info(f"✅ Category page loaded successfully")
             logger.info(f"📊 Fetching tenders from Kuwait Al-Yawm (Category: {category_id})...")
             
             api_url = f"{self.base_url}/online/AdsCategoryJson"
