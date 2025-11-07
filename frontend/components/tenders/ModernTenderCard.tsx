@@ -14,7 +14,7 @@ interface TenderCardProps {
 }
 
 export function ModernTenderCard({ tender }: TenderCardProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'غير محدد';
     const date = new Date(dateString);
@@ -109,18 +109,18 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
               <Separator orientation="vertical" className="h-4" />
               <div className="flex items-center gap-2 text-amber-600">
                 <Clock className="h-4 w-4" />
-                <span>ينتهي: {formatDate(tender.deadline)}</span>
+                <span>{t('Deadline:', 'ينتهي:')} {formatDate(tender.deadline)}</span>
               </div>
             </>
           )}
         </div>
 
         {/* Summary */}
-        {tender.summary_ar && (
+        {(language === 'en' ? tender.summary_en : tender.summary_ar) && (
           <>
             <Separator />
             <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
-              {tender.summary_ar}
+              {language === 'en' ? tender.summary_en : tender.summary_ar}
             </p>
           </>
         )}
@@ -129,7 +129,7 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
       <CardFooter className="gap-2">
         <Button asChild className="flex-1 gap-2" variant="default">
           <Link href={`/tenders/${tender.id}`}>
-            عرض التفاصيل
+            {t('View Details', 'عرض التفاصيل')}
           </Link>
         </Button>
         <Button asChild variant="outline" size="icon">
