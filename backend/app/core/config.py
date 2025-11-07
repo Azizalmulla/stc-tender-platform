@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     GOOGLE_DOC_AI_PROCESSOR_ID: Optional[str] = None
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None  # Path to service account JSON
     
+    # Kuwait Alyom (Official Gazette) Credentials
+    KUWAIT_ALYOM_USERNAME: Optional[str] = None
+    KUWAIT_ALYOM_PASSWORD: Optional[str] = None
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
