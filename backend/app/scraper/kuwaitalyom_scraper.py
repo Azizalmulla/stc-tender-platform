@@ -10,6 +10,7 @@ import re
 from typing import List, Dict, Optional
 import logging
 from app.core.config import settings
+from app.parser.pdf_extractor import PDFExtractor
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class KuwaitAlyomScraper:
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
         })
         self.is_authenticated = False
+        self.pdf_extractor = PDFExtractor()  # Initialize PDF extractor with OCR
         
     def login(self) -> bool:
         """
@@ -147,38 +149,159 @@ class KuwaitAlyomScraper:
             logger.error(f"❌ Error fetching tenders: {e}")
             return []
     
-    def download_pdf_page(self, edition_id: int, page_number: int) -> Optional[bytes]:
+    def extract_pdf_text(self, edition_id: int, page_number: int) -> Optional[str]:
         """
-        Download a specific PDF page from the gazette
+        Extract text from a specific PDF page from the gazette using OCR
         
         Args:
             edition_id: Gazette edition ID
             page_number: Page number in the edition
             
         Returns:
-            PDF bytes if successful, None otherwise
+            Extracted text if successful, None otherwise
         """
         try:
-            # Kuwait Alyom uses a flip viewer - we need to get the actual PDF URL
-            # This might require additional scraping of the flip viewer page
-            logger.info(f"📄 Downloading PDF: Edition {edition_id}, Page {page_number}")
+            logger.info(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
             
-            # For now, return None - we'll implement PDF extraction in next step
-            # The flip viewer URL is: /flip/index?id={edition_id}&no={page_number}
-            # We need to extract the actual PDF URL from this page
+            # Kuwait Alyom uses a flip viewer - try to access the PDF directly
+            # The flip viewer loads PDFs from a predictable URL pattern
+            # We'll try common patterns used by flip book viewers
             
-            return None
+            possible_pdf_urls = [
+                f"{self.base_url}/flip/pdf/{edition_id}/{page_number}.pdf",
+                f"{self.base_url}/flip/pages/{edition_id}/page{page_number}.pdf",
+                f"{self.base_url}/EditionsPDF/{edition_id}/page_{page_number}.pdf",
+            ]
             
+            pdf_bytes = None
+            
+            # Try each possible URL
+            for pdf_url in possible_pdf_urls:
+                try:
+                    response = self.session.get(pdf_url, timeout=30)
+                    if response.status_code == 200 and response.content[:4] == b'%PDF':
+                        pdf_bytes = response.content
+                        logger.info(f"✅ Found PDF at: {pdf_url}")
+                        break
+                except:
+                    continue
+            
+            # If direct PDF access fails, try to scrape the flip viewer page
+            if not pdf_bytes:
+                flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+                response = self.session.get(flip_url)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Look for PDF URL in JavaScript or iframe
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string and 'pdf' in script.string.lower():
+                        # Try to extract PDF URL from JavaScript
+                        pdf_match = re.search(r'["\']([^"\']*\.pdf[^"\']*)["\']', script.string)
+                        if pdf_match:
+                            pdf_url = pdf_match.group(1)
+                            if not pdf_url.startswith('http'):
+                                pdf_url = f"{self.base_url}{pdf_url}"
+                            
+                            response = self.session.get(pdf_url)
+                            if response.status_code == 200:
+                                pdf_bytes = response.content
+                                logger.info(f"✅ Extracted PDF from flip viewer")
+                                break
+            
+            if not pdf_bytes:
+                logger.warning(f"⚠️  Could not download PDF for Edition {edition_id}, Page {page_number}")
+                return None
+            
+            # Use PDF extractor (with Google Doc AI OCR) to extract text
+            text = self.pdf_extractor.extract_text_from_bytes(pdf_bytes)
+            
+            if text and len(text) > 50:  # Ensure we got meaningful content
+                logger.info(f"✅ Extracted {len(text)} characters from PDF")
+                return text
+            else:
+                logger.warning(f"⚠️  PDF extraction returned minimal text")
+                return None
+                
         except Exception as e:
-            logger.error(f"❌ Error downloading PDF: {e}")
+            logger.error(f"❌ Error extracting PDF text: {e}")
             return None
     
-    def parse_tender(self, tender_data: Dict) -> Dict:
+    def parse_ocr_text(self, ocr_text: str) -> Dict[str, Optional[str]]:
+        """
+        Parse OCR text to extract tender details
+        
+        Args:
+            ocr_text: Text extracted from PDF via OCR
+            
+        Returns:
+            Dictionary with extracted fields (ministry, description, deadline, etc.)
+        """
+        try:
+            extracted = {
+                'ministry': None,
+                'description': None,
+                'deadline': None,
+                'requirements': None
+            }
+            
+            # Extract ministry/organization (common patterns in Arabic)
+            ministry_patterns = [
+                r'(وزارة\s+[^\n]+)',
+                r'(الهيئة\s+العامة\s+[^\n]+)',
+                r'(شركة\s+[^\n]+)',
+                r'(مؤسسة\s+[^\n]+)',
+                r'(ديوان\s+[^\n]+)'
+            ]
+            
+            for pattern in ministry_patterns:
+                match = re.search(pattern, ocr_text)
+                if match:
+                    extracted['ministry'] = match.group(1).strip()
+                    break
+            
+            # Extract RFQ/tender description (usually after RFQ number)
+            desc_match = re.search(r'RFQ\s+\d+[:\s]+([^\n]{20,200})', ocr_text)
+            if desc_match:
+                extracted['description'] = desc_match.group(1).strip()
+            else:
+                # Try Arabic tender patterns
+                desc_match = re.search(r'مناقصة[:\s]+([^\n]{20,200})', ocr_text)
+                if desc_match:
+                    extracted['description'] = desc_match.group(1).strip()
+            
+            # Extract deadline (common date patterns)
+            deadline_patterns = [
+                r'آخر موعد[:\s]+(\d{1,2}/\d{1,2}/\d{4})',
+                r'تاريخ الإغلاق[:\s]+(\d{1,2}/\d{1,2}/\d{4})',
+                r'deadline[:\s]+(\d{1,2}/\d{1,2}/\d{4})',
+            ]
+            
+            for pattern in deadline_patterns:
+                match = re.search(pattern, ocr_text, re.IGNORECASE)
+                if match:
+                    extracted['deadline'] = match.group(1).strip()
+                    break
+            
+            # If no specific fields found, use first substantial paragraph as description
+            if not extracted['description']:
+                paragraphs = [p.strip() for p in ocr_text.split('\n') if len(p.strip()) > 50]
+                if paragraphs:
+                    extracted['description'] = paragraphs[0][:500]  # Limit length
+            
+            return extracted
+            
+        except Exception as e:
+            logger.error(f"❌ Error parsing OCR text: {e}")
+            return {'ministry': None, 'description': None, 'deadline': None, 'requirements': None}
+    
+    def parse_tender(self, tender_data: Dict, extract_pdf: bool = False) -> Dict:
         """
         Parse tender data from Kuwait Alyom API response
         
         Args:
             tender_data: Raw tender data from API
+            extract_pdf: Whether to extract and OCR the PDF (slower but more complete data)
             
         Returns:
             Standardized tender dictionary
@@ -205,6 +328,25 @@ class KuwaitAlyomScraper:
             # Generate URL to gazette page
             url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             
+            # Initialize with basic info
+            ministry = None
+            description = f"Gazette Edition {edition_no}, Page {page_number}"
+            pdf_text = None
+            
+            # Optionally extract PDF and parse with OCR
+            if extract_pdf and edition_id and page_number:
+                logger.info(f"🔍 Extracting PDF content for {title}...")
+                pdf_text = self.extract_pdf_text(edition_id, page_number)
+                
+                if pdf_text:
+                    # Parse OCR text to extract details
+                    ocr_data = self.parse_ocr_text(pdf_text)
+                    ministry = ocr_data.get('ministry')
+                    if ocr_data.get('description'):
+                        description = ocr_data.get('description')
+                    
+                    logger.info(f"✅ Extracted details - Ministry: {ministry}")
+            
             # Generate content hash for deduplication
             content = f"KA-{tender_id}|{title}|{edition_no}"
             content_hash = hashlib.md5(content.encode()).hexdigest()
@@ -214,9 +356,9 @@ class KuwaitAlyomScraper:
                 "tender_number": title,  # RFQ number or tender ID
                 "url": url,
                 "published_at": published_at,
-                "ministry": None,  # Will be extracted from PDF via OCR
+                "ministry": ministry,
                 "category": "tenders",  # Kuwait Alyom category
-                "description": f"Gazette Edition {edition_no}, Page {page_number}",
+                "description": description,
                 "language": "ar",  # Gazette is in Arabic
                 "hash": content_hash,
                 "source": "Kuwait Al-Yawm",
@@ -225,7 +367,7 @@ class KuwaitAlyomScraper:
                 "page_number": page_number,
                 "hijri_date": hijri_date,
                 "gazette_id": tender_id,
-                "pdf_url": None,  # Will be populated when we extract PDF
+                "pdf_text": pdf_text,  # Full OCR text for AI processing
             }
             
         except Exception as e:
@@ -236,7 +378,8 @@ class KuwaitAlyomScraper:
         self,
         category_id: str = "1",
         days_back: int = 90,
-        limit: int = 100
+        limit: int = 100,
+        extract_pdfs: bool = True
     ) -> List[Dict]:
         """
         Scrape all tenders from Kuwait Alyom
@@ -245,12 +388,14 @@ class KuwaitAlyomScraper:
             category_id: Category to scrape (1=Tenders, 2=Auctions, 18=Practices)
             days_back: How many days back to scrape
             limit: Maximum number of tenders
+            extract_pdfs: Whether to extract and OCR PDFs (slower but more complete)
             
         Returns:
             List of parsed tender dictionaries
         """
         logger.info(f"🚀 Starting Kuwait Al-Yawm scraper...")
         logger.info(f"   Category: {category_id}, Days back: {days_back}, Limit: {limit}")
+        logger.info(f"   PDF Extraction: {'Enabled (with Google Doc AI OCR)' if extract_pdfs else 'Disabled (metadata only)'}")
         
         # Calculate date range
         end_date = datetime.now()
@@ -269,8 +414,9 @@ class KuwaitAlyomScraper:
         
         # Parse tenders
         parsed_tenders = []
-        for raw_tender in raw_tenders:
-            parsed = self.parse_tender(raw_tender)
+        for i, raw_tender in enumerate(raw_tenders, 1):
+            logger.info(f"📄 Processing tender {i}/{len(raw_tenders)}: {raw_tender.get('AdsTitle')}")
+            parsed = self.parse_tender(raw_tender, extract_pdf=extract_pdfs)
             if parsed:
                 parsed_tenders.append(parsed)
         
