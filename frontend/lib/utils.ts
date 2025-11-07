@@ -5,7 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatDate(dateString: string): string {
+export function formatDate(dateString: string | null): string {
+  if (!dateString) return "N/A";
   const date = new Date(dateString);
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -14,7 +15,8 @@ export function formatDate(dateString: string): string {
   }).format(date);
 }
 
-export function formatDateArabic(dateString: string): string {
+export function formatDateArabic(dateString: string | null): string {
+  if (!dateString) return "غير محدد";
   const date = new Date(dateString);
   return new Intl.DateTimeFormat("ar-KW", {
     year: "numeric",
