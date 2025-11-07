@@ -10,10 +10,15 @@ from app.ai.openai_service import OpenAIService
 router = APIRouter()
 
 
+class ConversationMessage(BaseModel):
+    role: str  # 'user' or 'assistant'
+    content: str
+
 class ChatRequest(BaseModel):
     question: str
     lang: Optional[str] = None  # 'ar' or 'en', auto-detect if None
     limit: int = 5  # Number of context documents to use
+    conversation_history: List[ConversationMessage] = []  # Previous messages for context
 
 
 class Citation(BaseModel):
@@ -83,8 +88,13 @@ async def ask_question(
         for tender, distance in results
     ]
     
-    # 4. Generate answer using GPT with context
-    answer_result = ai_service.answer_question(request.question, context_docs)
+    # 4. Generate answer using GPT with context and conversation history
+    history = [{"role": msg.role, "content": msg.content} for msg in request.conversation_history]
+    answer_result = ai_service.answer_question(
+        request.question, 
+        context_docs,
+        conversation_history=history
+    )
     
     # 5. Build citations from retrieved documents
     citations = [

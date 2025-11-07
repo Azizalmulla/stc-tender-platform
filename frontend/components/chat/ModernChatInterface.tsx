@@ -58,26 +58,60 @@ export function ModernChatInterface() {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const questionText = input.trim();
     setInput("");
     setIsLoading(true);
 
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Prepare conversation history (exclude welcome message, only user/assistant exchanges)
+      const conversationHistory = messages
+        .slice(1)  // Skip welcome message
+        .map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }));
+
+      // Call chat API with conversation history
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/ask`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: questionText,
+          lang: language,
+          limit: 5,
+          conversation_history: conversationHistory
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response');
+      }
+
+      const data = await response.json();
       
+      // Use response based on current language
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: t(
-          "This is an example response. Will be connected to the API soon!",
-          "هذا مثال على الرد. سيتم ربطه بالـ API قريباً!"
-        ),
+        content: language === 'ar' ? data.answer_ar : data.answer_en,
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Error:", error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: t(
+          "Sorry, I encountered an error. Please try again.",
+          "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى."
+        ),
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }

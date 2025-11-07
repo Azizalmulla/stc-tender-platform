@@ -149,13 +149,14 @@ Rules:
             print(f"Embedding generation error: {e}")
             return [0.0] * settings.EMBEDDING_DIMENSION
     
-    def answer_question(self, question: str, context_docs: List[Dict]) -> Dict:
+    def answer_question(self, question: str, context_docs: List[Dict], conversation_history: List[Dict] = None) -> Dict:
         """
-        Answer a question about tenders using RAG
+        Answer a question about tenders using RAG with conversation context
         
         Args:
             question: User question in Arabic or English
             context_docs: List of relevant tender documents
+            conversation_history: Previous conversation messages for context (optional)
             
         Returns:
             Dict with answer_ar, answer_en, citations, confidence
@@ -169,13 +170,21 @@ Rules:
             for doc in context_docs[:5]  # Use top 5 documents
         ])
         
-        prompt = f"""You answer questions about Kuwait Alyoum tenders.
+        # Build conversation context
+        conversation_context = ""
+        if conversation_history:
+            conversation_context = "\n\nPrevious Conversation:\n" + "\n".join([
+                f"{msg['role'].capitalize()}: {msg['content']}"
+                for msg in conversation_history[-6:]  # Last 3 exchanges (6 messages)
+            ])
+        
+        system_prompt = f"""You answer questions about Kuwait Alyoum tenders.
 Answer only using the provided documents (no external info).
-
-Question: {question}
+Use conversation history for context to understand follow-up questions like "what about the first one", "tell me more", etc.
 
 Context Documents:
 {context}
+{conversation_context}
 
 If context insufficient, say "لم أجد تفاصيل كافية" / "I need more details."
 
@@ -189,9 +198,14 @@ Return JSON:
 """
         
         try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ]
+            
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
                 temperature=settings.TEMPERATURE,
                 max_tokens=settings.MAX_TOKENS_QA,
                 response_format={"type": "json_object"}
