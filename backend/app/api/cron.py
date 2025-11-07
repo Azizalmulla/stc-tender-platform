@@ -40,19 +40,32 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                 detail="Kuwait Alyom credentials not configured. Set KUWAIT_ALYOM_USERNAME and KUWAIT_ALYOM_PASSWORD"
             )
         
-        # Scrape tenders from Kuwait Al-Yawm (Official Gazette)
+        # Scrape ALL categories from Kuwait Al-Yawm (Official Gazette)
         try:
             scraper = KuwaitAlyomScraper(username=username, password=password)
             
-            # Scrape with PDF extraction enabled (uses Google Doc AI)
-            # For weekly scrape, limit to recent tenders and enable PDF extraction
-            tenders = scraper.scrape_all(
-                category_id="1",        # 1 = Tenders (المناقصات)
-                days_back=14,           # Last 2 weeks for weekly scrape
-                limit=50,               # Process up to 50 tenders per run
-                extract_pdfs=True       # Enable Google Doc AI OCR
-            )
-            print(f"✅ Scraped {len(tenders)} tenders from Kuwait Al-Yawm (Official Gazette)")
+            # Scrape all three categories: Tenders, Auctions, Practices
+            all_tenders = []
+            
+            categories = [
+                ("1", "Tenders (المناقصات)"),
+                ("2", "Auctions (المزايدات)"),
+                ("18", "Practices (الممارسات)")
+            ]
+            
+            for category_id, category_name in categories:
+                print(f"📊 Scraping {category_name}...")
+                category_tenders = scraper.scrape_all(
+                    category_id=category_id,
+                    days_back=14,           # Last 2 weeks for weekly scrape
+                    limit=50,               # Process up to 50 per category
+                    extract_pdfs=True       # Enable Google Doc AI OCR
+                )
+                all_tenders.extend(category_tenders)
+                print(f"✅ Found {len(category_tenders)} from {category_name}")
+            
+            tenders = all_tenders
+            print(f"✅ Total scraped: {len(tenders)} announcements from Kuwait Al-Yawm (Official Gazette)")
         except Exception as scrape_error:
             print(f"❌ SCRAPER ERROR: {scrape_error}")
             print(f"Error type: {type(scrape_error).__name__}")

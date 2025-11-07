@@ -382,13 +382,21 @@ class KuwaitAlyomScraper:
             content = f"KA-{tender_id}|{title}|{edition_no}"
             content_hash = hashlib.md5(content.encode()).hexdigest()
             
+            # Map Kuwait Alyom category to our system category
+            # This is set by scrape_all() based on which category is being scraped
+            category_map = {
+                "1": "tenders",      # المناقصات
+                "2": "auctions",     # المزايدات  
+                "18": "practices"    # الممارسات
+            }
+            
             return {
                 "title": f"{title} - Edition {edition_no}",
                 "tender_number": title,  # RFQ number or tender ID
                 "url": url,
                 "published_at": published_at,
                 "ministry": ministry,
-                "category": "tenders",  # Kuwait Alyom category
+                "category": "tenders",  # Default, will be set properly in scrape_all
                 "description": description,
                 "language": "ar",  # Gazette is in Arabic
                 "hash": content_hash,
@@ -399,6 +407,7 @@ class KuwaitAlyomScraper:
                 "hijri_date": hijri_date,
                 "gazette_id": tender_id,
                 "pdf_text": pdf_text,  # Full OCR text for AI processing
+                "kuwait_category_id": category_id,  # Store original category for reference
             }
             
         except Exception as e:
@@ -443,12 +452,21 @@ class KuwaitAlyomScraper:
             limit=limit
         )
         
+        # Category mapping
+        category_map = {
+            "1": "tenders",      # المناقصات
+            "2": "auctions",     # المزايدات  
+            "18": "practices"    # الممارسات
+        }
+        
         # Parse tenders
         parsed_tenders = []
         for i, raw_tender in enumerate(raw_tenders, 1):
             logger.info(f"📄 Processing tender {i}/{len(raw_tenders)}: {raw_tender.get('AdsTitle')}")
             parsed = self.parse_tender(raw_tender, extract_pdf=extract_pdfs)
             if parsed:
+                # Set the proper category based on category_id
+                parsed['category'] = category_map.get(category_id, "tenders")
                 parsed_tenders.append(parsed)
         
         logger.info(f"✅ Scraped {len(parsed_tenders)} tenders from Kuwait Al-Yawm")
