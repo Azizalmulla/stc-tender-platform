@@ -7,12 +7,11 @@ import asyncio
 from typing import Optional
 
 from app.core.config import settings
-from app.scraper.capt_scraper_lite import scrape_capt_lite
+from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.openai_service import OpenAIService
 from app.parser.pdf_parser import TextNormalizer
-from app.parser.pdf_extractor import PDFExtractor
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 
@@ -29,12 +28,31 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
-        print(f"🤖 Starting weekly scrape at {datetime.now()}")
+        print(f"🤖 Starting weekly scrape from Kuwait Al-Yawm (Official Gazette) at {datetime.now()}")
         
-        # Scrape all tenders (lightweight HTTP-based scraper)
+        # Initialize Kuwait Alyom scraper with credentials
+        username = settings.KUWAIT_ALYOM_USERNAME
+        password = settings.KUWAIT_ALYOM_PASSWORD
+        
+        if not username or not password:
+            raise HTTPException(
+                status_code=500, 
+                detail="Kuwait Alyom credentials not configured. Set KUWAIT_ALYOM_USERNAME and KUWAIT_ALYOM_PASSWORD"
+            )
+        
+        # Scrape tenders from Kuwait Al-Yawm (Official Gazette)
         try:
-            tenders = scrape_capt_lite()  # Non-async, lightweight
-            print(f"✅ Scraped {len(tenders)} tenders")
+            scraper = KuwaitAlyomScraper(username=username, password=password)
+            
+            # Scrape with PDF extraction enabled (uses Google Doc AI)
+            # For weekly scrape, limit to recent tenders and enable PDF extraction
+            tenders = scraper.scrape_all(
+                category_id="1",        # 1 = Tenders (المناقصات)
+                days_back=14,           # Last 2 weeks for weekly scrape
+                limit=50,               # Process up to 50 tenders per run
+                extract_pdfs=True       # Enable Google Doc AI OCR
+            )
+            print(f"✅ Scraped {len(tenders)} tenders from Kuwait Al-Yawm (Official Gazette)")
         except Exception as scrape_error:
             print(f"❌ SCRAPER ERROR: {scrape_error}")
             print(f"Error type: {type(scrape_error).__name__}")
@@ -46,7 +64,6 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
         db = SessionLocal()
         ai_service = OpenAIService()
         normalizer = TextNormalizer()
-        pdf_extractor = PDFExtractor()
         
         processed = 0
         skipped = 0
@@ -65,23 +82,18 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                     Tender.tender_number == tender_data.get('tender_number')
                 ).first() if tender_data.get('tender_number') else None
                 
-                # Download and extract PDF text if URL is available
-                pdf_text = None
-                if tender_data.get('pdf_url'):
-                    print(f"  📄 Processing PDF for tender {tender_data.get('tender_number')}")
-                    pdf_text = pdf_extractor.extract_text_from_url(tender_data['pdf_url'])
-                    if pdf_text:
-                        print(f"  ✅ Extracted {len(pdf_text)} characters from PDF")
-                    else:
-                        print(f"  ⚠️  PDF extraction failed, using description only")
+                # Kuwait Alyom scraper already extracted PDF text via Google Doc AI OCR
+                pdf_text = tender_data.get('pdf_text')  # Already extracted by scraper
+                description = tender_data.get('description', '')
                 
                 # Prepare text for AI (combine description + PDF content)
-                description = tender_data.get('description', '')
                 if pdf_text:
+                    print(f"  ✅ Using Google Doc AI OCR text ({len(pdf_text)} characters)")
                     # Use PDF text as main body, description as summary
                     full_text = f"{description}\n\n{pdf_text[:50000]}"  # Limit to 50K chars
                     body_text = pdf_text[:100000]  # Store up to 100K chars
                 else:
+                    print(f"  ⚠️  No PDF text available, using metadata only")
                     full_text = description
                     body_text = description
                 
