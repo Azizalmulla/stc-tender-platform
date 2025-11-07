@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, FileText, Search, Languages } from "lucide-react";
+import { MessageSquare, FileText, Search, Languages, Users, Bell } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 export function Header() {
@@ -13,6 +13,8 @@ export function Header() {
 
   const navItems = [
     { href: "/", label: t("Tenders", "المناقصات"), icon: FileText },
+    { href: "/ptm", label: t("Pre-Tender Meetings", "الاجتماعات"), icon: Users },
+    { href: "/notifications", label: t("Notifications", "الإشعارات"), icon: Bell },
     { href: "/search", label: t("Search", "البحث"), icon: Search },
     { href: "/chat", label: t("Agent", "الوكيل"), icon: MessageSquare },
   ];

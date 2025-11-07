@@ -24,6 +24,13 @@ export interface Tender {
   published_at: string | null;
   lang: string | null;
   score?: number;
+  // Pre-tender meeting fields
+  meeting_date: string | null;
+  meeting_location: string | null;
+  // Postponement fields
+  is_postponed: boolean;
+  original_deadline: string | null;
+  postponement_reason: string | null;
 }
 
 export interface TenderDetail extends Tender {
