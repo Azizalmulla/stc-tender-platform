@@ -31,8 +31,15 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
         print(f"🤖 Starting weekly scrape at {datetime.now()}")
         
         # Scrape all tenders
-        tenders = await scrape_capt()
-        print(f"✅ Scraped {len(tenders)} tenders")
+        try:
+            tenders = await scrape_capt()
+            print(f"✅ Scraped {len(tenders)} tenders")
+        except Exception as scrape_error:
+            print(f"❌ SCRAPER ERROR: {scrape_error}")
+            print(f"Error type: {type(scrape_error).__name__}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Scraping failed: {str(scrape_error)}")
         
         # Process and import
         db = SessionLocal()

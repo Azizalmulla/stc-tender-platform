@@ -25,15 +25,26 @@ class CAPTScraper:
         
     async def __aenter__(self):
         """Async context manager entry"""
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=settings.SCRAPER_HEADLESS,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--no-sandbox',
-            ]
-        )
-        return self
+        try:
+            print("🌐 Starting Playwright...")
+            self.playwright = await async_playwright().start()
+            print("🚀 Launching browser...")
+            self.browser = await self.playwright.chromium.launch(
+                headless=settings.SCRAPER_HEADLESS,
+                args=[
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',  # Fix for Docker/Render
+                ]
+            )
+            print("✅ Browser launched successfully")
+            return self
+        except Exception as e:
+            print(f"❌ BROWSER LAUNCH FAILED: {e}")
+            print(f"Error type: {type(e).__name__}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            raise
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
@@ -73,13 +84,17 @@ class CAPTScraper:
         page.set_default_timeout(settings.SCRAPER_TIMEOUT)
         
         try:
-            await page.goto(url, wait_until='networkidle')
+            print(f"  📄 Loading {url}...")
+            await page.goto(url, wait_until='networkidle', timeout=60000)
+            print(f"  ⏱️  Waiting for content...")
             await page.wait_for_timeout(5000)  # Wait longer for Cloudflare
             
             tenders = []
             
             # Find tender boxes (.content-box.grey or .content-box.green)
+            print(f"  🔍 Searching for tender boxes...")
             tender_boxes = await page.query_selector_all('.content-box.grey, .content-box.green')
+            print(f"  📦 Found {len(tender_boxes)} tender boxes")
             
             for box in tender_boxes:
                 try:
@@ -87,13 +102,16 @@ class CAPTScraper:
                     if tender_data:
                         tenders.append(tender_data)
                 except Exception as e:
-                    print(f"Error parsing tender box: {e}")
+                    print(f"  ⚠️  Error parsing tender box: {e}")
                     continue
             
             return tenders
             
         except Exception as e:
-            print(f"Error scraping category {category_name}: {e}")
+            print(f"  ❌ Error scraping category {category_name}: {e}")
+            print(f"  Error type: {type(e).__name__}")
+            import traceback
+            print(f"  Traceback: {traceback.format_exc()}")
             return []
         finally:
             await page.close()
