@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Cron Jobs
     CRON_SECRET: Optional[str] = None  # Secret token to protect cron endpoints
     
+    # Google Cloud Document AI (for PDF OCR)
+    GOOGLE_CLOUD_PROJECT: Optional[str] = None
+    GOOGLE_DOC_AI_PROCESSOR_ID: Optional[str] = None
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None  # Path to service account JSON
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
