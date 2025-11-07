@@ -5,11 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { searchHybrid } from "@/lib/api";
 import Link from "next/link";
 import { formatDate, formatDateArabic } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function SearchPage() {
+  const { t, language } = useLanguage();
   const [query, setQuery] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [lang, setLang] = useState<"ar" | "en">("ar");
 
   const { data: results, isLoading } = useQuery({
     queryKey: ["search", searchTerm],
@@ -29,25 +30,18 @@ export default function SearchPage() {
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center h-16">
             <Link href="/" className="flex items-center gap-2">
               <span className="text-xl font-bold text-slate-900">←</span>
               <div>
                 <h1 className="text-lg font-semibold text-slate-900">
-                  Search Tenders
+                  {t("Search Tenders", "بحث عن المناقصات")}
                 </h1>
                 <p className="text-xs text-slate-500">
-                  Keyword & Semantic Search
+                  {t("Keyword & Semantic Search", "بحث بالكلمات والدلالة")}
                 </p>
               </div>
             </Link>
-
-            <button
-              onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-              className="px-3 py-1.5 text-sm font-medium rounded-md bg-slate-100 hover:bg-slate-200 transition-colors"
-            >
-              {lang === "ar" ? "English" : "العربية"}
-            </button>
           </div>
         </div>
       </header>
@@ -61,11 +55,10 @@ export default function SearchPage() {
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={
-                  lang === "ar"
-                    ? "ابحث عن عطاءات..."
-                    : "Search for tenders..."
-                }
+                placeholder={t(
+                  "Search for tenders...",
+                  "ابحث عن عطاءات..."
+                )}
                 className="w-full px-6 py-4 text-lg border-2 border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent bg-white"
               />
               <button
@@ -73,7 +66,7 @@ export default function SearchPage() {
                 disabled={query.trim().length < 3}
                 className="absolute right-3 top-1/2 -translate-y-1/2 px-6 py-2 bg-slate-900 text-white rounded-md hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors font-medium"
               >
-                {lang === "ar" ? "بحث" : "Search"}
+                {t("Search", "بحث")}
               </button>
             </div>
           </form>
@@ -81,7 +74,7 @@ export default function SearchPage() {
           {/* Search Tips */}
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="text-sm text-slate-600">
-              {lang === "ar" ? "جرّب:" : "Try:"}
+              {t("Try:", "جرّب:")}
             </span>
             {[
               { ar: "تقنية المعلومات", en: "IT technology" },
@@ -91,12 +84,12 @@ export default function SearchPage() {
               <button
                 key={idx}
                 onClick={() => {
-                  setQuery(lang === "ar" ? term.ar : term.en);
-                  setSearchTerm(lang === "ar" ? term.ar : term.en);
+                  setQuery(language === "ar" ? term.ar : term.en);
+                  setSearchTerm(language === "ar" ? term.ar : term.en);
                 }}
                 className="px-3 py-1 text-sm bg-white border border-slate-200 rounded-md hover:border-slate-300 hover:bg-slate-50 transition-colors"
               >
-                {lang === "ar" ? term.ar : term.en}
+                {language === "ar" ? term.ar : term.en}
               </button>
             ))}
           </div>
@@ -108,12 +101,12 @@ export default function SearchPage() {
             <div className="border-b border-slate-200 px-6 py-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold text-slate-900">
-                  {lang === "ar" ? "نتائج البحث" : "Search Results"}
+                  {t("Search Results", "نتائج البحث")}
                 </h2>
                 {results && (
                   <span className="text-sm text-slate-500">
                     {results.length}{" "}
-                    {lang === "ar" ? "نتيجة" : "results"}
+                    {t("results", "نتيجة")}
                   </span>
                 )}
               </div>
@@ -121,7 +114,7 @@ export default function SearchPage() {
 
             {isLoading ? (
               <div className="p-8 text-center text-slate-500">
-                {lang === "ar" ? "جاري البحث..." : "Searching..."}
+                {t("Searching...", "جاري البحث...")}
               </div>
             ) : results && results.length > 0 ? (
               <div className="divide-y divide-slate-200">
@@ -135,9 +128,7 @@ export default function SearchPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
                           <h3 className="text-base font-medium text-slate-900">
-                            {lang === "ar"
-                              ? tender.title || "Untitled"
-                              : tender.title || "Untitled"}
+                            {tender.title || t("Untitled", "بدون عنوان")}
                           </h3>
                           {tender.score && (
                             <span className="px-2 py-0.5 text-xs bg-emerald-50 text-emerald-700 rounded font-medium">
@@ -146,7 +137,7 @@ export default function SearchPage() {
                           )}
                         </div>
                         <p className="text-sm text-slate-600 line-clamp-2 mb-3">
-                          {lang === "ar"
+                          {language === "ar"
                             ? tender.summary_ar || tender.summary_en
                             : tender.summary_en || tender.summary_ar}
                         </p>
@@ -163,8 +154,8 @@ export default function SearchPage() {
                           )}
                           {tender.deadline && (
                             <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded">
-                              Deadline:{" "}
-                              {lang === "ar"
+                              {t("Deadline", "الموعد النهائي")}:{" "}
+                              {language === "ar"
                                 ? formatDateArabic(tender.deadline)
                                 : formatDate(tender.deadline)}
                             </span>
@@ -173,7 +164,7 @@ export default function SearchPage() {
                       </div>
                       <div className="text-right flex-shrink-0">
                         <div className="text-sm text-slate-500">
-                          {lang === "ar"
+                          {language === "ar"
                             ? formatDateArabic(tender.published_at)
                             : formatDate(tender.published_at)}
                         </div>
@@ -184,9 +175,7 @@ export default function SearchPage() {
               </div>
             ) : searchTerm ? (
               <div className="p-8 text-center text-slate-500">
-                {lang === "ar"
-                  ? "لم يتم العثور على نتائج"
-                  : "No results found"}
+                {t("No results found", "لم يتم العثور على نتائج")}
               </div>
             ) : null}
           </div>
@@ -197,14 +186,13 @@ export default function SearchPage() {
           <div className="bg-white rounded-lg p-12 text-center border border-slate-200">
             <div className="max-w-md mx-auto">
               <div className="text-lg font-medium text-slate-900 mb-2">
-                {lang === "ar"
-                  ? "ابحث عن العطاءات الحكومية"
-                  : "Search Government Tenders"}
+                {t("Search Government Tenders", "ابحث عن العطاءات الحكومية")}
               </div>
               <p className="text-sm text-slate-500">
-                {lang === "ar"
-                  ? "استخدم الكلمات المفتاحية أو البحث الدلالي للعثور على العطاءات ذات الصلة"
-                  : "Use keywords or semantic search to find relevant tenders"}
+                {t(
+                  "Use keywords or semantic search to find relevant tenders",
+                  "استخدم الكلمات المفتاحية أو البحث الدلالي للعثور على العطاءات ذات الصلة"
+                )}
               </p>
             </div>
           </div>

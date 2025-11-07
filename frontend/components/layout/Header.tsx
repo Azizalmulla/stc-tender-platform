@@ -54,13 +54,13 @@ export function Header() {
 
         {/* Language Toggle */}
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
           onClick={() => setLanguage(language === "en" ? "ar" : "en")}
-          className="gap-2"
+          className="gap-2 px-3 h-9 rounded-full border border-border hover:bg-accent transition-all"
         >
           <Languages className="h-4 w-4" />
-          <span>{language === "en" ? "العربية" : "English"}</span>
+          <span className="font-medium">{language === "en" ? "العربية" : "English"}</span>
         </Button>
       </div>
     </header>
