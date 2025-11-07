@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list = [
         "http://localhost:3000",
         "https://frontend-ogdswxda6-azizalmulla16-gmailcoms-projects.vercel.app",
+        "https://frontend-eight-xi-96.vercel.app",
         "https://*.vercel.app"
     ]
     
