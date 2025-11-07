@@ -93,6 +93,11 @@ class KuwaitAlyomScraper:
                 return True
             else:
                 logger.error("❌ Login failed - invalid credentials or session issue")
+                logger.error(f"Response URL: {login_response.url}")
+                logger.error(f"Response status: {login_response.status_code}")
+                # Log response snippet for debugging
+                response_preview = login_response.text[:500] if len(login_response.text) > 500 else login_response.text
+                logger.error(f"Response preview: {response_preview}")
                 return False
                 
         except Exception as e:
@@ -118,10 +123,11 @@ class KuwaitAlyomScraper:
         Returns:
             List of tender dictionaries
         """
-        if not self.is_authenticated:
-            if not self.login():
-                logger.error("❌ Cannot fetch tenders - not authenticated")
-                return []
+        # Always try to login first to ensure fresh session
+        logger.info("🔄 Ensuring authentication...")
+        if not self.login():
+            logger.error("❌ Cannot fetch tenders - login failed")
+            return []
         
         try:
             logger.info(f"📊 Fetching tenders from Kuwait Al-Yawm (Category: {category_id})...")
@@ -141,7 +147,13 @@ class KuwaitAlyomScraper:
             }
             
             response = self.session.post(api_url, data=payload)
-            response.raise_for_status()
+            
+            logger.info(f"API Response Status: {response.status_code}")
+            
+            if response.status_code != 200:
+                logger.error(f"❌ API returned status {response.status_code}")
+                logger.error(f"Response text: {response.text[:500]}")
+                return []
             
             data = response.json()
             tenders = data.get('data', [])
@@ -153,6 +165,8 @@ class KuwaitAlyomScraper:
             
         except Exception as e:
             logger.error(f"❌ Error fetching tenders: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return []
     
     def extract_pdf_text(self, edition_id: int, page_number: int) -> Optional[str]:
