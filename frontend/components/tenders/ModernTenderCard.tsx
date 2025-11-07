@@ -6,23 +6,15 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Calendar, Building2, FileText, ExternalLink, Clock } from "lucide-react";
 import Link from "next/link";
+import { Tender } from "@/lib/api";
 
 interface TenderCardProps {
-  tender: {
-    id: number;
-    title: string | null;
-    tender_number: string | null;
-    ministry: string | null;
-    category: string;
-    published_at: string;
-    deadline?: string | null;
-    summary_ar?: string | null;
-    url: string;
-  };
+  tender: Tender;
 }
 
 export function ModernTenderCard({ tender }: TenderCardProps) {
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'غير محدد';
     const date = new Date(dateString);
     return new Intl.DateTimeFormat("ar-KW", {
       year: "numeric",
@@ -31,7 +23,8 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
     }).format(date);
   };
 
-  const getCategoryColor = (category: string) => {
+  const getCategoryColor = (category: string | null) => {
+    if (!category) return "bg-gray-500/10 text-gray-700 border-gray-500/20";
     const colors: Record<string, string> = {
       opening: "bg-green-500/10 text-green-700 border-green-500/20",
       closing: "bg-amber-500/10 text-amber-700 border-amber-500/20",
@@ -41,7 +34,8 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
     return colors[category] || "bg-gray-500/10 text-gray-700 border-gray-500/20";
   };
 
-  const getCategoryLabel = (category: string) => {
+  const getCategoryLabel = (category: string | null) => {
+    if (!category) return 'غير محدد';
     const labels: Record<string, string> = {
       opening: "مناقصة مفتوحة",
       closing: "على وشك الإغلاق",
