@@ -24,6 +24,13 @@ class TenderResponse(BaseModel):
     document_price_kd: Optional[float]
     published_at: Optional[datetime]
     lang: Optional[str]
+    # Pre-tender meeting fields
+    meeting_date: Optional[datetime]
+    meeting_location: Optional[str]
+    # Postponement fields
+    is_postponed: Optional[bool]
+    original_deadline: Optional[datetime]
+    postponement_reason: Optional[str]
     
     class Config:
         from_attributes = True

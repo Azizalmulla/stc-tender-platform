@@ -157,6 +157,19 @@ class CAPTScraperLite:
                 if pdf_url and not pdf_url.startswith('http'):
                     pdf_url = f"{self.base_url}{pdf_url}"
             
+            # Extract meeting info for pre-tender meetings
+            meeting_date = None
+            meeting_location = None
+            if category == "pre_tenders":
+                # Look for meeting date in description (common patterns)
+                # This is basic - will improve when we see actual HTML structure
+                desc_lower = description.lower()
+                if 'meeting' in desc_lower or 'اجتماع' in description:
+                    # Try to extract date/location from description
+                    # For now, mark as having meeting but null date/location
+                    # Will be populated from PDF extraction
+                    pass
+            
             return {
                 "title": description[:200] if description else f"Tender {tender_no}",
                 "tender_number": tender_no,
@@ -168,7 +181,9 @@ class CAPTScraperLite:
                 "language": language,
                 "hash": content_hash,
                 "source": "CAPT",
-                "pdf_url": pdf_url,  # Add PDF URL if found
+                "pdf_url": pdf_url,
+                "meeting_date": meeting_date,
+                "meeting_location": meeting_location,
             }
             
         except Exception as e:

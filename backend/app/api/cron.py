@@ -140,6 +140,8 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                     original_deadline=original_deadline,
                     deadline_history=deadline_history,
                     postponement_reason=postponement_reason,
+                    meeting_date=tender_data.get('meeting_date'),
+                    meeting_location=tender_data.get('meeting_location'),
                 )
                 
                 db.add(tender)
