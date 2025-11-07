@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from app.core.config import settings
 from app.db.session import Base
 from app.models.tender import Tender, TenderEmbedding, KeywordHit
+from app.models.conversation import Conversation, Message
 
 # this is the Alembic Config object
 config = context.config

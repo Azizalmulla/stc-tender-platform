@@ -21,6 +21,7 @@ interface Message {
 
 export function ModernChatInterface() {
   const { t, language } = useLanguage();
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
@@ -36,6 +37,15 @@ export function ModernChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load session ID from localStorage on mount
+  useEffect(() => {
+    const storedSessionId = localStorage.getItem('chat_session_id');
+    if (storedSessionId) {
+      setSessionId(storedSessionId);
+      // TODO: Load conversation history from API
+    }
+  }, []);
 
   // Auto-scroll to bottom when new message
   useEffect(() => {
@@ -63,15 +73,7 @@ export function ModernChatInterface() {
     setIsLoading(true);
 
     try {
-      // Prepare conversation history (exclude welcome message, only user/assistant exchanges)
-      const conversationHistory = messages
-        .slice(1)  // Skip welcome message
-        .map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }));
-
-      // Call chat API with conversation history
+      // Call chat API with session ID (backend handles history)
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/ask`, {
         method: 'POST',
         headers: {
@@ -79,9 +81,9 @@ export function ModernChatInterface() {
         },
         body: JSON.stringify({
           question: questionText,
+          session_id: sessionId,  // Send current session ID (or null for new)
           lang: language,
           limit: 5,
-          conversation_history: conversationHistory
         }),
       });
 
@@ -90,6 +92,12 @@ export function ModernChatInterface() {
       }
 
       const data = await response.json();
+      
+      // Save session ID from response
+      if (data.session_id) {
+        setSessionId(data.session_id);
+        localStorage.setItem('chat_session_id', data.session_id);
+      }
       
       // Use response based on current language
       const assistantMessage: Message = {
