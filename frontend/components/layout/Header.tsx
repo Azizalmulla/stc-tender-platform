@@ -4,15 +4,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { MessageSquare, FileText, Search } from "lucide-react";
+import { MessageSquare, FileText, Search, Languages } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export function Header() {
   const pathname = usePathname();
+  const { language, setLanguage, t } = useLanguage();
 
   const navItems = [
-    { href: "/", label: "المناقصات", icon: FileText },
-    { href: "/search", label: "البحث", icon: Search },
-    { href: "/chat", label: "المساعد الذكي", icon: MessageSquare },
+    { href: "/", label: t("Tenders", "المناقصات"), icon: FileText },
+    { href: "/search", label: t("Search", "البحث"), icon: Search },
+    { href: "/chat", label: t("AI Assistant", "المساعد الذكي"), icon: MessageSquare },
   ];
 
   return (
@@ -50,9 +52,15 @@ export function Header() {
           })}
         </nav>
 
-        {/* Mobile menu button */}
-        <Button variant="ghost" size="icon" className="md:hidden">
-          <FileText className="h-5 w-5" />
+        {/* Language Toggle */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setLanguage(language === "en" ? "ar" : "en")}
+          className="gap-2"
+        >
+          <Languages className="h-4 w-4" />
+          <span>{language === "en" ? "العربية" : "English"}</span>
         </Button>
       </div>
     </header>

@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, FileText, Calendar, AlertCircle } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function HomePage() {
+  const { t } = useLanguage();
   const [filters, setFilters] = useState({
     ministry: "",
     category: "",
@@ -36,9 +38,14 @@ export default function HomePage() {
     <div className="container py-8 space-y-8">
       {/* Hero Section */}
       <div className="space-y-2">
-        <h1 className="text-4xl font-bold tracking-tight">المناقصات الحكومية</h1>
+        <h1 className="text-4xl font-bold tracking-tight">
+          {t("Government Tenders", "المناقصات الحكومية")}
+        </h1>
         <p className="text-lg text-muted-foreground">
-          تتبع وتحليل المناقصات الحكومية في الكويت بالذكاء الاصطناعي
+          {t(
+            "Track and analyze government tenders in Kuwait with AI",
+            "تتبع وتحليل المناقصات الحكومية في الكويت بالذكاء الاصطناعي"
+          )}
         </p>
       </div>
 
@@ -47,13 +54,15 @@ export default function HomePage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">إجمالي المناقصات</CardTitle>
+              <CardTitle className="text-sm font-medium">
+                {t("Total Tenders", "إجمالي المناقصات")}
+              </CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total_tenders.toLocaleString()}</div>
               <p className="text-xs text-muted-foreground">
-                في النظام
+                {t("in system", "في النظام")}
               </p>
             </CardContent>
           </Card>
@@ -106,14 +115,19 @@ export default function HomePage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>تصفية المناقصات</CardTitle>
-          <CardDescription>ابحث عن المناقصات حسب الوزارة أو التصنيف</CardDescription>
+          <CardTitle>{t("Filter Tenders", "تصفية المناقصات")}</CardTitle>
+          <CardDescription>
+            {t(
+              "Search for tenders by ministry or category",
+              "ابحث عن المناقصات حسب الوزارة أو التصنيف"
+            )}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1">
               <Input
-                placeholder="ابحث حسب الوزارة..."
+                placeholder={t("Search by ministry...", "ابحث حسب الوزارة...")}
                 value={filters.ministry}
                 onChange={(e) => setFilters({ ...filters, ministry: e.target.value })}
               />
@@ -124,7 +138,7 @@ export default function HomePage() {
                   variant="outline"
                   onClick={() => setFilters({ ministry: "", category: "" })}
                 >
-                  مسح الفلاتر
+                  {t("Clear Filters", "مسح الفلاتر")}
                 </Button>
               ) : null}
             </div>
@@ -154,7 +168,9 @@ export default function HomePage() {
 
       {/* Tenders Grid */}
       <div>
-        <h2 className="text-2xl font-bold mb-4">أحدث المناقصات</h2>
+        <h2 className="text-2xl font-bold mb-4">
+          {t("Latest Tenders", "أحدث المناقصات")}
+        </h2>
         
         {tendersLoading ? (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">

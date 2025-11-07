@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Inter, Cairo } from "next/font/google";
+import { Inter, Tajawal } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Header } from "@/components/layout/Header";
 
-const inter = Inter({ subsets: ["latin"] });
-const cairo = Cairo({ subsets: ["arabic"], variable: "--font-cairo" });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const tajawal = Tajawal({ 
+  subsets: ["arabic"],
+  weight: ["300", "400", "500", "700", "800"],
+  variable: "--font-tajawal" 
+});
 
 export const metadata: Metadata = {
-  title: "منصة المناقصات الحكومية - STC",
-  description: "منصة ذكية لتتبع المناقصات الحكومية في الكويت",
+  title: "STC Tender Platform - Government Tenders in Kuwait",
+  description: "AI-powered platform for tracking government tenders in Kuwait",
 };
 
 export default function RootLayout({
@@ -18,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning className={cairo.variable}>
-      <body className={`${inter.className} ${cairo.variable} font-sans antialiased`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${tajawal.variable}`}>
+      <body className={`${inter.className} font-sans antialiased`}>
         <Providers>
           <div className="relative flex min-h-screen flex-col">
             <Header />
