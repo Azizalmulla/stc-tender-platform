@@ -69,7 +69,7 @@ export default function HomePage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">آخر 7 أيام</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("Last 7 Days", "آخر 7 أيام")}</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -77,27 +77,27 @@ export default function HomePage() {
                 +{stats.recent_7_days}
               </div>
               <p className="text-xs text-muted-foreground">
-                مناقصة جديدة
+                {t("new tenders", "مناقصة جديدة")}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">التصنيفات</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("Categories", "التصنيفات")}</CardTitle>
               <Calendar className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.categories.length}</div>
               <p className="text-xs text-muted-foreground">
-                تصنيف مختلف
+                {t("different categories", "تصنيف مختلف")}
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">المواعيد القريبة</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("Upcoming Deadlines", "المواعيد القريبة")}</CardTitle>
               <AlertCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -105,7 +105,7 @@ export default function HomePage() {
                 {stats.upcoming_deadlines.length}
               </div>
               <p className="text-xs text-muted-foreground">
-                تنتهي قريباً
+                {t("ending soon", "تنتهي قريباً")}
               </p>
             </CardContent>
           </Card>
@@ -196,8 +196,8 @@ export default function HomePage() {
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-medium">لا توجد مناقصات</p>
-              <p className="text-sm text-muted-foreground">جرب تغيير الفلاتر</p>
+              <p className="text-lg font-medium">{t("No tenders found", "لا توجد مناقصات")}</p>
+              <p className="text-sm text-muted-foreground">{t("Try changing the filters", "جرب تغيير الفلاتر")}</p>
             </CardContent>
           </Card>
         )}
