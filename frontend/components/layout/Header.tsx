@@ -14,7 +14,7 @@ export function Header() {
   const navItems = [
     { href: "/", label: t("Tenders", "المناقصات"), icon: FileText },
     { href: "/search", label: t("Search", "البحث"), icon: Search },
-    { href: "/chat", label: t("AI Assistant", "المساعد الذكي"), icon: MessageSquare },
+    { href: "/chat", label: t("Agent", "الوكيل"), icon: MessageSquare },
   ];
 
   return (
