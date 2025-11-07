@@ -1,0 +1,23 @@
+# Render Cron Jobs Configuration
+# Add these as Cron Jobs in your Render dashboard
+
+services:
+  # Weekly Sunday Scraper
+  - type: cron
+    name: stc-tender-weekly-scraper
+    env: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "0 5 * * 0"  # Every Sunday at 5 AM UTC (8 AM Kuwait)
+    command: >
+      curl -X POST https://stc-tender-platform.onrender.com/api/cron/scrape-weekly
+      -H "Authorization: Bearer ${CRON_SECRET}"
+    
+  # Daily Postponement Check
+  - type: cron
+    name: stc-tender-daily-check
+    env: docker
+    dockerfilePath: ./Dockerfile
+    schedule: "0 5 * * 1-6"  # Monday-Saturday at 5 AM UTC (8 AM Kuwait)
+    command: >
+      curl -X POST https://stc-tender-platform.onrender.com/api/cron/check-postponements
+      -H "Authorization: Bearer ${CRON_SECRET}"

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api import tenders, search, chat
+from app.api import tenders, search, chat, cron
 
 
 app = FastAPI(
@@ -24,6 +24,7 @@ app.add_middleware(
 app.include_router(tenders.router, prefix="/api/tenders", tags=["tenders"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(cron.router, prefix="/api", tags=["cron"])
 
 
 @app.get("/")

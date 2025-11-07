@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: list = ["http://localhost:3000", "https://*.vercel.app"]
     
+    # Cron Jobs
+    CRON_SECRET: Optional[str] = None  # Secret token to protect cron endpoints
+    
     class Config:
         env_file = ".env"
         case_sensitive = True
