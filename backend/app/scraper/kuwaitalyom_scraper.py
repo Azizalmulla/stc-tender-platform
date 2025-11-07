@@ -55,6 +55,7 @@ class KuwaitAlyomScraper:
             bool: True if login successful, False otherwise
         """
         try:
+            print("🔐 Logging in to Kuwait Al-Yawm...")  # Using print() to ensure visibility
             logger.info("🔐 Logging in to Kuwait Al-Yawm...")
             
             # Get login page to retrieve tokens
@@ -86,20 +87,20 @@ class KuwaitAlyomScraper:
                 allow_redirects=True
             )
             
-            # DEBUG: Log EVERYTHING about the login response
-            logger.info(f"📍 Login Response URL: {login_response.url}")
-            logger.info(f"📊 Login Response Status: {login_response.status_code}")
-            logger.info(f"🍪 Session Cookies: {dict(self.session.cookies)}")
+            # DEBUG: Log EVERYTHING about the login response (using print to ensure visibility)
+            print(f"📍 Login Response URL: {login_response.url}")
+            print(f"📊 Login Response Status: {login_response.status_code}")
+            print(f"🍪 Session Cookies: {dict(self.session.cookies)}")
             
             # Show first 1000 chars of response for debugging
             response_preview = login_response.text[:1000] if len(login_response.text) > 1000 else login_response.text
-            logger.info(f"📄 Login Response Preview:\n{response_preview}")
+            print(f"📄 Login Response Preview:\n{response_preview}")
             
             # Check our search strings
             has_user = 'المستخدم' in login_response.text
             has_logout = 'تسجيل الخروج' in login_response.text
-            logger.info(f"🔍 Contains 'المستخدم': {has_user}")
-            logger.info(f"🔍 Contains 'تسجيل الخروج': {has_logout}")
+            print(f"🔍 Contains 'المستخدم': {has_user}")
+            print(f"🔍 Contains 'تسجيل الخروج': {has_logout}")
             
             # Check if login successful by looking for user info in response
             if has_user or has_logout:
@@ -135,8 +136,10 @@ class KuwaitAlyomScraper:
             List of tender dictionaries
         """
         # Always try to login first to ensure fresh session
+        print(f"🔄 Ensuring authentication for category {category_id}...")  # Using print()
         logger.info("🔄 Ensuring authentication...")
         if not self.login():
+            print("❌ Cannot fetch tenders - login failed")  # Using print()
             logger.error("❌ Cannot fetch tenders - login failed")
             return []
         
@@ -147,6 +150,9 @@ class KuwaitAlyomScraper:
             category_page_url = f"{self.base_url}/online/AdsCategory/{category_id}"
             page_response = self.session.get(category_page_url)
             
+            print(f"📍 Category Page URL: {page_response.url}")
+            print(f"📊 Category Page Status: {page_response.status_code}")
+            print(f"🍪 Session Cookies After Page Visit: {dict(self.session.cookies)}")
             logger.info(f"📍 Category Page URL: {page_response.url}")
             logger.info(f"📊 Category Page Status: {page_response.status_code}")
             logger.info(f"🍪 Session Cookies After Page Visit: {dict(self.session.cookies)}")
