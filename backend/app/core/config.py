@@ -1,0 +1,62 @@
+from pydantic_settings import BaseSettings
+from typing import Optional
+
+
+class Settings(BaseSettings):
+    # App
+    APP_NAME: str = "Kuwait Alyoum Tender Tracker"
+    VERSION: str = "1.0.0"
+    DEBUG: bool = False
+    
+    # Database
+    DATABASE_URL: str
+    
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379"
+    
+    # OpenAI
+    OPENAI_API_KEY: str
+    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    
+    # Google Cloud Document AI
+    GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS: Optional[str] = None
+    DOCUMENTAI_PROCESSOR_NAME: Optional[str] = None  # Format: projects/{project}/locations/{location}/processors/{processor}
+    
+    # Scraper
+    SCRAPER_USER_AGENT: str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    SCRAPER_TIMEOUT: int = 30000  # milliseconds
+    SCRAPER_HEADLESS: bool = True
+    
+    # Kuwait Alyoum URLs
+    BASE_URL: str = "https://kuwaitalyawm.media.gov.kw"
+    TENDER_CATEGORIES: dict = {
+        "tenders": 1,      # المناقصات
+        "auctions": 2,     # المزايدات
+        "practices": 18    # الممارسات
+    }
+    
+    # Timezone
+    TIMEZONE: str = "Asia/Kuwait"
+    
+    # AI Settings
+    MAX_TOKENS_SUMMARY: int = 200
+    MAX_TOKENS_QA: int = 500
+    TEMPERATURE: float = 0.3
+    
+    # Embeddings
+    EMBEDDING_DIMENSION: int = 1536  # text-embedding-3-small (Neon pgvector limit: 2000)
+    
+    # Search
+    SIMILARITY_THRESHOLD: float = 0.7
+    MAX_SEARCH_RESULTS: int = 50
+    
+    # CORS
+    CORS_ORIGINS: list = ["http://localhost:3000", "https://*.vercel.app"]
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
+
+
+settings = Settings()

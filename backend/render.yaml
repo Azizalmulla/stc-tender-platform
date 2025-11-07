@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: stc-tender-api
+    env: docker
+    dockerfilePath: ./Dockerfile
+    region: oregon
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS_BASE64
+        sync: false
+      - key: DOCUMENTAI_PROCESSOR_NAME
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://frontend-et9shxa1a-azizalmulla16-gmailcoms-projects.vercel.app","https://*.vercel.app"]'
+      - key: PORT
+        value: "8000"
