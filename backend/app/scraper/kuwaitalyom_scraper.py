@@ -130,6 +130,17 @@ class KuwaitAlyomScraper:
             return []
         
         try:
+            # IMPORTANT: Visit the category page first to establish session state
+            # Kuwait Alyom's API requires this step before calling AdsCategoryJson
+            logger.info(f"📄 Visiting category page to establish session...")
+            category_page_url = f"{self.base_url}/online/AdsCategory/{category_id}"
+            page_response = self.session.get(category_page_url)
+            
+            if page_response.status_code != 200:
+                logger.error(f"❌ Failed to access category page: {page_response.status_code}")
+                return []
+            
+            logger.info(f"✅ Category page loaded, now fetching tender data...")
             logger.info(f"📊 Fetching tenders from Kuwait Al-Yawm (Category: {category_id})...")
             
             api_url = f"{self.base_url}/online/AdsCategoryJson"
