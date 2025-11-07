@@ -2,9 +2,8 @@
 Direct tender import script (without Celery)
 Scrapes CAPT, processes with AI, and imports to database
 """
-import asyncio
 from sqlalchemy.orm import Session
-from app.scraper.capt_scraper import scrape_capt
+from app.scraper.capt_scraper_lite import scrape_capt_lite
 from app.ai.openai_service import OpenAIService
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
@@ -15,9 +14,9 @@ def import_tenders():
     print("Starting tender import...")
     print("=" * 70)
     
-    # Scrape tenders
+    # Scrape tenders (lightweight version)
     print("\n1️⃣  Scraping tenders from CAPT...")
-    tenders = asyncio.run(scrape_capt())
+    tenders = scrape_capt_lite()
     print(f"✅ Scraped {len(tenders)} tenders")
     
     if not tenders:

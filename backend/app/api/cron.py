@@ -7,7 +7,7 @@ import asyncio
 from typing import Optional
 
 from app.core.config import settings
-from app.scraper.capt_scraper import scrape_capt
+from app.scraper.capt_scraper_lite import scrape_capt_lite
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.openai_service import OpenAIService
@@ -30,9 +30,9 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
     try:
         print(f"🤖 Starting weekly scrape at {datetime.now()}")
         
-        # Scrape all tenders
+        # Scrape all tenders (lightweight HTTP-based scraper)
         try:
-            tenders = await scrape_capt()
+            tenders = scrape_capt_lite()  # Non-async, lightweight
             print(f"✅ Scraped {len(tenders)} tenders")
         except Exception as scrape_error:
             print(f"❌ SCRAPER ERROR: {scrape_error}")
