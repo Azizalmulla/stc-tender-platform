@@ -149,6 +149,14 @@ class CAPTScraperLite:
             # Detect language
             language = self._detect_language(description)
             
+            # Try to find PDF link (often in tender boxes or detail pages)
+            pdf_url = None
+            pdf_link = box.find('a', href=lambda x: x and '.pdf' in x.lower())
+            if pdf_link:
+                pdf_url = pdf_link.get('href')
+                if pdf_url and not pdf_url.startswith('http'):
+                    pdf_url = f"{self.base_url}{pdf_url}"
+            
             return {
                 "title": description[:200] if description else f"Tender {tender_no}",
                 "tender_number": tender_no,
@@ -160,6 +168,7 @@ class CAPTScraperLite:
                 "language": language,
                 "hash": content_hash,
                 "source": "CAPT",
+                "pdf_url": pdf_url,  # Add PDF URL if found
             }
             
         except Exception as e:

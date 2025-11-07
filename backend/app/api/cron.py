@@ -12,6 +12,7 @@ from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.openai_service import OpenAIService
 from app.parser.pdf_parser import TextNormalizer
+from app.parser.pdf_extractor import PDFExtractor
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 
@@ -45,6 +46,7 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
         db = SessionLocal()
         ai_service = OpenAIService()
         normalizer = TextNormalizer()
+        pdf_extractor = PDFExtractor()
         
         processed = 0
         skipped = 0
@@ -63,8 +65,27 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                     Tender.tender_number == tender_data.get('tender_number')
                 ).first() if tender_data.get('tender_number') else None
                 
-                # Prepare text for AI
-                text = f"{tender_data.get('title', '')}\n{tender_data.get('description', '')}"
+                # Download and extract PDF text if URL is available
+                pdf_text = None
+                if tender_data.get('pdf_url'):
+                    print(f"  📄 Processing PDF for tender {tender_data.get('tender_number')}")
+                    pdf_text = pdf_extractor.extract_text_from_url(tender_data['pdf_url'])
+                    if pdf_text:
+                        print(f"  ✅ Extracted {len(pdf_text)} characters from PDF")
+                    else:
+                        print(f"  ⚠️  PDF extraction failed, using description only")
+                
+                # Prepare text for AI (combine description + PDF content)
+                description = tender_data.get('description', '')
+                if pdf_text:
+                    # Use PDF text as main body, description as summary
+                    full_text = f"{description}\n\n{pdf_text[:50000]}"  # Limit to 50K chars
+                    body_text = pdf_text[:100000]  # Store up to 100K chars
+                else:
+                    full_text = description
+                    body_text = description
+                
+                text = f"{tender_data.get('title', '')}\n{full_text}"
                 if tender_data.get('language') == 'ar':
                     text = normalizer.normalize_arabic(text)
                 
@@ -107,7 +128,7 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                     deadline=new_deadline,
                     ministry=tender_data.get('ministry', extracted.get('ministry')),
                     category=tender_data.get('category'),
-                    body=tender_data.get('description', ''),
+                    body=body_text,  # Now contains full PDF text or description
                     summary_ar=summary if tender_data.get('language') == 'ar' else summary_data.get('summary_ar', ''),
                     summary_en=summary if tender_data.get('language') == 'en' else summary_data.get('summary_en', ''),
                     facts_ar=summary_data.get('facts_ar', []),
