@@ -14,12 +14,12 @@ redis==5.0.1
 celery==5.3.6
 
 # Scraping
-playwright==1.41.1
 beautifulsoup4==4.12.3
 trafilatura==1.6.4
 requests==2.31.0
 httpx==0.26.0
 cloudscraper==1.2.71  # Bypass Cloudflare protection
+# playwright removed - using lightweight cloudscraper instead
 
 # PDF Processing
 PyMuPDF==1.23.22
