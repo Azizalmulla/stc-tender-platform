@@ -38,6 +38,12 @@ class KuwaitAlyomScraper:
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
         })
+        # Disable SSL verification for production environment (Kuwait Alyom certificate issues)
+        self.session.verify = False
+        # Suppress SSL warnings
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
         self.is_authenticated = False
         self.pdf_extractor = PDFExtractor()  # Initialize PDF extractor with OCR
         
