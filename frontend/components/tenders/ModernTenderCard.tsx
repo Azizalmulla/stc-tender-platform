@@ -10,13 +10,13 @@ import Link from "next/link";
 interface TenderCardProps {
   tender: {
     id: number;
-    title: string;
+    title: string | null;
     tender_number: string;
     ministry: string;
     category: string;
     published_at: string;
-    deadline?: string;
-    summary_ar?: string;
+    deadline?: string | null;
+    summary_ar?: string | null;
     url: string;
   };
 }
@@ -57,7 +57,7 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 space-y-2">
             <CardTitle className="text-xl leading-relaxed group-hover:text-primary transition-colors">
-              {tender.title}
+              {tender.title || 'بدون عنوان'}
             </CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="secondary" className="gap-1">
