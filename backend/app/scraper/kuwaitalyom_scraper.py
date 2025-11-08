@@ -281,17 +281,18 @@ class KuwaitAlyomScraper:
                 print(f"⚠️  Could not split at source=\"")
                 return None
             
-            # Now extract only base64 chars until we hit non-base64
+            # DEBUG: Show what comes after source="
             raw_data = parts[1]
-            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-')
-            base64_data = ''
-            for char in raw_data:
-                if char in base64_chars:
-                    base64_data += char
-                elif char in (' ', '\t', '\n', '\r'):  # Allow whitespace
-                    continue
-                else:  # Hit non-base64 char, stop
-                    break
+            print(f"🔍 First 500 chars after source=\": {raw_data[:500]}")
+            print(f"🔍 Last 100 chars of raw_data: {raw_data[-100:]}")
+            
+            # Extract everything until closing quote
+            if '"' in raw_data:
+                base64_data = raw_data.split('"', 1)[0]
+                print(f"🔍 Extracted data between quotes: {len(base64_data)} chars")
+            else:
+                print(f"⚠️  No closing quote found after source=\"")
+                return None
             
             if len(base64_data) < 100:
                 print(f"⚠️  Extracted base64 too short: {len(base64_data)} chars")
