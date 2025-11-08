@@ -281,18 +281,21 @@ class KuwaitAlyomScraper:
                 print(f"⚠️  Could not split at source=\"")
                 return None
             
-            # DEBUG: Show what comes after source="
+            # Kuwait's HTML is malformed - source attribute has no closing quote
+            # Extract only valid base64 characters until we hit invalid chars
             raw_data = parts[1]
-            print(f"🔍 First 500 chars after source=\": {raw_data[:500]}")
-            print(f"🔍 Last 100 chars of raw_data: {raw_data[-100:]}")
+            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+            base64_data = []
             
-            # Extract everything until closing quote
-            if '"' in raw_data:
-                base64_data = raw_data.split('"', 1)[0]
-                print(f"🔍 Extracted data between quotes: {len(base64_data)} chars")
-            else:
-                print(f"⚠️  No closing quote found after source=\"")
-                return None
+            for char in raw_data:
+                if char in base64_chars:
+                    base64_data.append(char)
+                elif char in (' ', '\t', '\n', '\r'):  # Skip whitespace
+                    continue
+                else:  # Hit invalid char (like < or ;), stop
+                    break
+            
+            base64_data = ''.join(base64_data)
             
             if len(base64_data) < 100:
                 print(f"⚠️  Extracted base64 too short: {len(base64_data)} chars")
