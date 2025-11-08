@@ -423,6 +423,9 @@ class KuwaitAlyomScraper:
             description = f"Gazette Edition {edition_no}, Page {page_number}"
             pdf_text = None
             
+            # Debug: Check extraction parameters
+            print(f"🔍 DEBUG: extract_pdf={extract_pdf}, edition_id={edition_id}, page_number={page_number}, title={title}")
+            
             # Optionally extract PDF and parse with OCR
             if extract_pdf and edition_id and page_number:
                 print(f"🔍 Extracting PDF content for {title}...")
