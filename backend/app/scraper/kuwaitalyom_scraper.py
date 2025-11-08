@@ -269,23 +269,33 @@ class KuwaitAlyomScraper:
                 print(f"⚠️  Failed to load flipbook page: {response.status_code}")
                 return None
             
-            # Search for base64 PDF data in the page
+            # Search for base64 PDF data in the page using string split (NO REGEX)
             # The PDF is embedded in: <div class="PDFFlip" id="PDFF" source="BASE64_DATA">
-            # Capture ONLY valid base64 characters (A-Za-z0-9+/=- and whitespace)
-            # Non-greedy to stop at first closing quote
-            base64_match = re.search(r'source="([A-Za-z0-9+/=\-\s]+?)"', response.text)
-            
-            if not base64_match:
-                print(f"⚠️  Could not find base64 PDF data in flipbook page")
-                print(f"🔍 Page HTML length: {len(response.text)} chars")
-                print(f"🔍 Searching for 'data:application' in HTML: {'data:application' in response.text}")
-                print(f"🔍 Searching for 'base64' in HTML: {'base64' in response.text}")
-                # Save a snippet of the HTML for debugging
-                html_snippet = response.text[:1000] if len(response.text) > 1000 else response.text
-                print(f"🔍 HTML start: {html_snippet}")
+            if 'source="' not in response.text:
+                print(f"⚠️  Could not find source attribute in flipbook page")
                 return None
             
-            base64_data = base64_match.group(1)
+            # Split at source=" and take everything after
+            parts = response.text.split('source="', 1)
+            if len(parts) < 2:
+                print(f"⚠️  Could not split at source=\"")
+                return None
+            
+            # Now extract only base64 chars until we hit non-base64
+            raw_data = parts[1]
+            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-')
+            base64_data = ''
+            for char in raw_data:
+                if char in base64_chars:
+                    base64_data += char
+                elif char in (' ', '\t', '\n', '\r'):  # Allow whitespace
+                    continue
+                else:  # Hit non-base64 char, stop
+                    break
+            
+            if len(base64_data) < 100:
+                print(f"⚠️  Extracted base64 too short: {len(base64_data)} chars")
+                return None
             # Remove any whitespace (newlines, spaces) from base64 data
             base64_data = re.sub(r'\s+', '', base64_data)
             print(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
