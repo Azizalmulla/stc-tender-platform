@@ -248,6 +248,9 @@ class KuwaitAlyomScraper:
         """
         Extract text from a specific PDF page from the gazette using OCR
         
+        The flipbook viewer embeds the PDF as base64 data URI in the page.
+        We extract this base64 data, decode it, and send to Google Doc AI for OCR.
+        
         Args:
             edition_id: Gazette edition ID
             page_number: Page number in the edition
@@ -258,55 +261,35 @@ class KuwaitAlyomScraper:
         try:
             logger.info(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
             
-            # Kuwait Alyom uses a flip viewer - try to access the PDF directly
-            # The flip viewer loads PDFs from a predictable URL pattern
-            # We'll try common patterns used by flip book viewers
+            # Visit the flipbook viewer page
+            flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+            response = self.session.get(flip_url, timeout=30)
             
-            possible_pdf_urls = [
-                f"{self.base_url}/flip/pdf/{edition_id}/{page_number}.pdf",
-                f"{self.base_url}/flip/pages/{edition_id}/page{page_number}.pdf",
-                f"{self.base_url}/EditionsPDF/{edition_id}/page_{page_number}.pdf",
-            ]
-            
-            pdf_bytes = None
-            
-            # Try each possible URL
-            for pdf_url in possible_pdf_urls:
-                try:
-                    response = self.session.get(pdf_url, timeout=30)
-                    if response.status_code == 200 and response.content[:4] == b'%PDF':
-                        pdf_bytes = response.content
-                        logger.info(f"✅ Found PDF at: {pdf_url}")
-                        break
-                except:
-                    continue
-            
-            # If direct PDF access fails, try to scrape the flip viewer page
-            if not pdf_bytes:
-                flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
-                response = self.session.get(flip_url)
-                soup = BeautifulSoup(response.text, 'html.parser')
-                
-                # Look for PDF URL in JavaScript or iframe
-                scripts = soup.find_all('script')
-                for script in scripts:
-                    if script.string and 'pdf' in script.string.lower():
-                        # Try to extract PDF URL from JavaScript
-                        pdf_match = re.search(r'["\']([^"\']*\.pdf[^"\']*)["\']', script.string)
-                        if pdf_match:
-                            pdf_url = pdf_match.group(1)
-                            if not pdf_url.startswith('http'):
-                                pdf_url = f"{self.base_url}{pdf_url}"
-                            
-                            response = self.session.get(pdf_url)
-                            if response.status_code == 200:
-                                pdf_bytes = response.content
-                                logger.info(f"✅ Extracted PDF from flip viewer")
-                                break
-            
-            if not pdf_bytes:
-                logger.warning(f"⚠️  Could not download PDF for Edition {edition_id}, Page {page_number}")
+            if response.status_code != 200:
+                logger.warning(f"⚠️  Failed to load flipbook page: {response.status_code}")
                 return None
+            
+            # Search for base64 PDF data in the page
+            # Pattern: data:application/pdf;base64,JVBERi0xLjc...
+            base64_match = re.search(r'data:application/pdf;base64,([A-Za-z0-9+/=]+)', response.text)
+            
+            if not base64_match:
+                logger.warning(f"⚠️  Could not find base64 PDF data in flipbook page")
+                return None
+            
+            base64_data = base64_match.group(1)
+            logger.info(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
+            
+            # Decode base64 to get PDF bytes
+            import base64
+            pdf_bytes = base64.b64decode(base64_data)
+            
+            # Verify it's a valid PDF (starts with %PDF)
+            if not pdf_bytes.startswith(b'%PDF'):
+                logger.warning(f"⚠️  Decoded data is not a valid PDF")
+                return None
+            
+            logger.info(f"✅ Decoded PDF ({len(pdf_bytes)} bytes)")
             
             # Use PDF extractor (with Google Doc AI OCR) to extract text
             text = self.pdf_extractor.extract_text_from_bytes(pdf_bytes)
@@ -320,6 +303,8 @@ class KuwaitAlyomScraper:
                 
         except Exception as e:
             logger.error(f"❌ Error extracting PDF text: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def parse_ocr_text(self, ocr_text: str) -> Dict[str, Optional[str]]:
