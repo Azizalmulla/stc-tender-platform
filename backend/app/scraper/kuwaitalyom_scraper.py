@@ -271,7 +271,8 @@ class KuwaitAlyomScraper:
             
             # Search for base64 PDF data in the page
             # The PDF is embedded in: <div class="PDFFlip" id="PDFF" source="BASE64_DATA">
-            base64_match = re.search(r'<div[^>]*class="PDFFlip"[^>]*source="([A-Za-z0-9+/=\s-]+?)"', response.text, re.DOTALL)
+            # Match everything except the closing quote to capture just the base64 data
+            base64_match = re.search(r'<div[^>]*class="PDFFlip"[^>]*source="([^"]+)"', response.text)
             
             if not base64_match:
                 print(f"⚠️  Could not find base64 PDF data in flipbook page")
