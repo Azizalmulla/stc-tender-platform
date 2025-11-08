@@ -304,3 +304,52 @@ async def cleanup_capt_tenders(authorization: Optional[str] = Header(None)):
     except Exception as e:
         print(f"❌ Error during CAPT tender cleanup: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/delete-all-tenders")
+async def delete_all_tenders(authorization: Optional[str] = Header(None)):
+    """
+    Delete all tenders from the database (for testing)
+    Protected by authorization header for security
+    """
+    # Simple auth check
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        db = SessionLocal()
+        
+        # Count all tenders before deletion
+        from sqlalchemy import func
+        total_count = db.query(func.count(Tender.id)).scalar()
+        
+        print(f"🗑️  Deleting all {total_count} tenders from database")
+        
+        if total_count == 0:
+            db.close()
+            return {
+                "status": "success",
+                "message": "No tenders found",
+                "deleted": 0
+            }
+        
+        # Delete all tenders
+        deleted = db.query(Tender).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        print(f"✅ Successfully deleted {deleted} tenders")
+        
+        db.close()
+        
+        return {
+            "status": "success",
+            "message": f"Deleted all {deleted} tenders",
+            "deleted": deleted,
+            "remaining": 0
+        }
+        
+    except Exception as e:
+        print(f"❌ Error during tender deletion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
