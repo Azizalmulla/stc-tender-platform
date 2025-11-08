@@ -390,13 +390,14 @@ class KuwaitAlyomScraper:
             logger.error(f"❌ Error parsing OCR text: {e}")
             return {'ministry': None, 'description': None, 'deadline': None, 'requirements': None}
     
-    def parse_tender(self, tender_data: Dict, extract_pdf: bool = False) -> Dict:
+    def parse_tender(self, tender_data: Dict, extract_pdf: bool = False, category_id: str = "1") -> Dict:
         """
         Parse tender data from Kuwait Alyom API response
         
         Args:
             tender_data: Raw tender data from API
             extract_pdf: Whether to extract and OCR the PDF (slower but more complete data)
+            category_id: Category ID for this tender (1=Tenders, 2=Auctions, 18=Practices)
             
         Returns:
             Standardized tender dictionary
@@ -530,7 +531,7 @@ class KuwaitAlyomScraper:
         parsed_tenders = []
         for i, raw_tender in enumerate(raw_tenders, 1):
             logger.info(f"📄 Processing tender {i}/{len(raw_tenders)}: {raw_tender.get('AdsTitle')}")
-            parsed = self.parse_tender(raw_tender, extract_pdf=extract_pdfs)
+            parsed = self.parse_tender(raw_tender, extract_pdf=extract_pdfs, category_id=category_id)
             if parsed:
                 # Set the proper category based on category_id
                 parsed['category'] = category_map.get(category_id, "tenders")
