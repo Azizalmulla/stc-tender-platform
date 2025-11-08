@@ -505,8 +505,11 @@ class KuwaitAlyomScraper:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days_back)
         
-        start_date_str = start_date.strftime("%Y/%m/%d")
-        end_date_str = end_date.strftime("%Y/%m/%d")
+        # Format dates for API 
+        # NOTE: Kuwait Alyom API doesn't accept date filters properly
+        # Send empty strings like the browser does, then filter results after
+        start_date_str = ""
+        end_date_str = ""
         
         # Fetch tenders
         raw_tenders = self.fetch_tenders(
