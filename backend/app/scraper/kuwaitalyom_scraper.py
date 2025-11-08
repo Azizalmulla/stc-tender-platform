@@ -414,8 +414,8 @@ class KuwaitAlyomScraper:
             page_number = tender_data.get('FromPage')
             tender_id = tender_data.get('ID')
             
-            # Generate URL to gazette page
-            url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+            # Generate URL to gazette page (include tender_id to make it unique for multiple tenders on same page)
+            url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}#tender-{tender_id}"
             
             # Initialize with basic info
             ministry = None
