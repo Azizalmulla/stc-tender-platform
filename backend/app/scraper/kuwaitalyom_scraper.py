@@ -259,14 +259,14 @@ class KuwaitAlyomScraper:
             Extracted text if successful, None otherwise
         """
         try:
-            logger.info(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
+            print(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
             
             # Visit the flipbook viewer page
             flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             response = self.session.get(flip_url, timeout=30)
             
             if response.status_code != 200:
-                logger.warning(f"⚠️  Failed to load flipbook page: {response.status_code}")
+                print(f"⚠️  Failed to load flipbook page: {response.status_code}")
                 return None
             
             # Search for base64 PDF data in the page
@@ -275,19 +275,19 @@ class KuwaitAlyomScraper:
             base64_match = re.search(r'data:application/pdf;base64,([A-Za-z0-9+/=\s]+?)(?:["\']|</)', response.text, re.DOTALL)
             
             if not base64_match:
-                logger.warning(f"⚠️  Could not find base64 PDF data in flipbook page")
-                logger.info(f"🔍 Page HTML length: {len(response.text)} chars")
-                logger.info(f"🔍 Searching for 'data:application' in HTML: {'data:application' in response.text}")
-                logger.info(f"🔍 Searching for 'base64' in HTML: {'base64' in response.text}")
+                print(f"⚠️  Could not find base64 PDF data in flipbook page")
+                print(f"🔍 Page HTML length: {len(response.text)} chars")
+                print(f"🔍 Searching for 'data:application' in HTML: {'data:application' in response.text}")
+                print(f"🔍 Searching for 'base64' in HTML: {'base64' in response.text}")
                 # Save a snippet of the HTML for debugging
                 html_snippet = response.text[:1000] if len(response.text) > 1000 else response.text
-                logger.info(f"🔍 HTML start: {html_snippet}")
+                print(f"🔍 HTML start: {html_snippet}")
                 return None
             
             base64_data = base64_match.group(1)
             # Remove any whitespace (newlines, spaces) from base64 data
             base64_data = re.sub(r'\s+', '', base64_data)
-            logger.info(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
+            print(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
             
             # Decode base64 to get PDF bytes
             import base64
@@ -295,25 +295,25 @@ class KuwaitAlyomScraper:
             
             # Verify it's a valid PDF (starts with %PDF)
             if not pdf_bytes.startswith(b'%PDF'):
-                logger.warning(f"⚠️  Decoded data is not a valid PDF")
+                print(f"⚠️  Decoded data is not a valid PDF")
                 return None
             
-            logger.info(f"✅ Decoded PDF ({len(pdf_bytes)} bytes)")
+            print(f"✅ Decoded PDF ({len(pdf_bytes)} bytes)")
             
             # Use PDF extractor (with Google Doc AI OCR) to extract text
             text = self.pdf_extractor.extract_text_from_bytes(pdf_bytes)
             
             if text and len(text) > 50:  # Ensure we got meaningful content
-                logger.info(f"✅ Extracted {len(text)} characters from PDF")
+                print(f"✅ Extracted {len(text)} characters from PDF")
                 return text
             else:
-                logger.warning(f"⚠️  PDF extraction returned minimal text")
+                print(f"⚠️  PDF extraction returned minimal text")
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Error extracting PDF text: {e}")
+            print(f"❌ Error extracting PDF text: {e}")
             import traceback
-            logger.error(traceback.format_exc())
+            print(traceback.format_exc())
             return None
     
     def parse_ocr_text(self, ocr_text: str) -> Dict[str, Optional[str]]:
