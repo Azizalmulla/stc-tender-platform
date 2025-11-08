@@ -425,7 +425,7 @@ class KuwaitAlyomScraper:
             
             # Optionally extract PDF and parse with OCR
             if extract_pdf and edition_id and page_number:
-                logger.info(f"🔍 Extracting PDF content for {title}...")
+                print(f"🔍 Extracting PDF content for {title}...")
                 pdf_text = self.extract_pdf_text(edition_id, page_number)
                 
                 if pdf_text:
@@ -435,7 +435,7 @@ class KuwaitAlyomScraper:
                     if ocr_data.get('description'):
                         description = ocr_data.get('description')
                     
-                    logger.info(f"✅ Extracted details - Ministry: {ministry}")
+                    print(f"✅ Extracted details - Ministry: {ministry}")
             
             # Generate content hash for deduplication
             content = f"KA-{tender_id}|{title}|{edition_no}"
