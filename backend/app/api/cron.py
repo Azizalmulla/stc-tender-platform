@@ -247,3 +247,60 @@ async def check_postponements(authorization: Optional[str] = Header(None)):
     except Exception as e:
         print(f"❌ Error in postponement check: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/cleanup-capt-tenders")
+async def cleanup_capt_tenders(authorization: Optional[str] = Header(None)):
+    """
+    One-time cleanup endpoint to remove all CAPT tenders from the database
+    Protected by authorization header for security
+    """
+    # Simple auth check
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        db = SessionLocal()
+        
+        # Count CAPT tenders before deletion
+        from sqlalchemy import func
+        capt_count = db.query(func.count(Tender.id)).filter(
+            Tender.url.like('%capt.gov.kw%')
+        ).scalar()
+        
+        print(f"🗑️  Found {capt_count} CAPT tenders to delete")
+        
+        if capt_count == 0:
+            db.close()
+            return {
+                "status": "success",
+                "message": "No CAPT tenders found",
+                "deleted": 0
+            }
+        
+        # Delete CAPT tenders
+        deleted = db.query(Tender).filter(
+            Tender.url.like('%capt.gov.kw%')
+        ).delete(synchronize_session=False)
+        
+        db.commit()
+        
+        # Count remaining tenders
+        remaining = db.query(func.count(Tender.id)).scalar()
+        
+        print(f"✅ Successfully deleted {deleted} CAPT tenders")
+        print(f"📊 Remaining tenders in database: {remaining}")
+        
+        db.close()
+        
+        return {
+            "status": "success",
+            "message": f"Deleted {deleted} CAPT tenders",
+            "deleted": deleted,
+            "remaining": remaining
+        }
+        
+    except Exception as e:
+        print(f"❌ Error during CAPT tender cleanup: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
