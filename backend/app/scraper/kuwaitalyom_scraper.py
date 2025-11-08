@@ -271,13 +271,22 @@ class KuwaitAlyomScraper:
             
             # Search for base64 PDF data in the page
             # Pattern: data:application/pdf;base64,JVBERi0xLjc...
-            base64_match = re.search(r'data:application/pdf;base64,([A-Za-z0-9+/=]+)', response.text)
+            # Use DOTALL flag to match across newlines, and non-greedy match
+            base64_match = re.search(r'data:application/pdf;base64,([A-Za-z0-9+/=\s]+?)(?:["\']|</)', response.text, re.DOTALL)
             
             if not base64_match:
                 logger.warning(f"⚠️  Could not find base64 PDF data in flipbook page")
+                logger.info(f"🔍 Page HTML length: {len(response.text)} chars")
+                logger.info(f"🔍 Searching for 'data:application' in HTML: {'data:application' in response.text}")
+                logger.info(f"🔍 Searching for 'base64' in HTML: {'base64' in response.text}")
+                # Save a snippet of the HTML for debugging
+                html_snippet = response.text[:1000] if len(response.text) > 1000 else response.text
+                logger.info(f"🔍 HTML start: {html_snippet}")
                 return None
             
             base64_data = base64_match.group(1)
+            # Remove any whitespace (newlines, spaces) from base64 data
+            base64_data = re.sub(r'\s+', '', base64_data)
             logger.info(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
             
             # Decode base64 to get PDF bytes
