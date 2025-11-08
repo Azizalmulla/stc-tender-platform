@@ -283,8 +283,9 @@ class KuwaitAlyomScraper:
             
             # Kuwait's HTML is malformed - source attribute has no closing quote
             # Extract only valid base64 characters until we hit invalid chars
+            # Kuwait uses URL-safe base64 (- instead of +, _ instead of /)
             raw_data = parts[1]
-            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-_')
             base64_data = []
             
             for char in raw_data:
@@ -303,6 +304,10 @@ class KuwaitAlyomScraper:
             # Remove any whitespace (newlines, spaces) from base64 data
             base64_data = re.sub(r'\s+', '', base64_data)
             print(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
+            
+            # Convert URL-safe base64 to standard base64
+            # Kuwait uses - instead of + and _ instead of /
+            base64_data = base64_data.replace('-', '+').replace('_', '/')
             
             # Decode base64 to get PDF bytes
             import base64
