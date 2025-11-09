@@ -345,17 +345,9 @@ class KuwaitAlyomScraper:
             # Remove any whitespace
             base64_data = re.sub(r'\s+', '', base64_data)
             
-            # CRITICAL: Strip all trailing '=' padding
-            # urlsafe_b64decode will add correct padding automatically
-            original_length = len(base64_data)
-            base64_data = base64_data.rstrip('=')
-            stripped_padding = original_length - len(base64_data)
-            
-            if stripped_padding > 0:
-                print(f"🔧 Stripped {stripped_padding} trailing '=' characters")
-            
-            print(f"✅ Found base64 PDF data ({len(base64_data)} characters without padding, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
+            print(f"✅ Found base64 PDF data ({len(base64_data)} characters, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
             print(f"   - Data length % 4: {len(base64_data) % 4}")
+            print(f"   - Last 50 chars: {base64_data[-50:]}")
             
             # Decode using URL-safe base64 decoder (handles - and _ automatically, adds padding)
             import base64
