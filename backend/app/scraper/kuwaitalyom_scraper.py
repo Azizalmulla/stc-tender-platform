@@ -293,38 +293,21 @@ class KuwaitAlyomScraper:
             raw_data = parts[1]
             base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_')
             base64_data = []
-            found_padding = False
             stop_reason = "unknown"
             
             for i, char in enumerate(raw_data):
-                # Once we hit '=', we're in the padding zone
+                # Once we hit '=', STOP - don't include it
                 if char == '=':
-                    if not found_padding:
-                        found_padding = True
-                        base64_data.append(char)
-                        print(f"🔍 Found first '=' at position {i}")
-                    else:
-                        # Additional '=' padding
-                        base64_data.append(char)
-                elif found_padding:
-                    # After padding, if we hit a non-'=' base64 char, that's the NEXT attribute
-                    # Stop here!
-                    if char in base64_chars:
-                        stop_reason = f"hit base64 char '{char}' after padding (next attribute)"
-                        print(f"🛑 Stopped at position {i}: {stop_reason}")
-                        break
-                    elif char not in (' ', '\t', '\n', '\r'):
-                        # Hit invalid char after padding
-                        stop_reason = f"hit invalid char '{char}' after padding"
-                        print(f"🛑 Stopped at position {i}: {stop_reason}")
-                        break
+                    stop_reason = f"hit padding '=' (stopped before it)"
+                    print(f"🛑 Stopped at position {i}: {stop_reason}")
+                    break
                 elif char in base64_chars:
                     base64_data.append(char)
                 elif char in (' ', '\t', '\n', '\r'):
                     # Skip whitespace
                     continue
                 else:
-                    # Hit invalid char before any padding
+                    # Hit invalid char
                     stop_reason = f"hit invalid char '{char}'"
                     print(f"🛑 Stopped at position {i}: {stop_reason}")
                     break
@@ -334,7 +317,6 @@ class KuwaitAlyomScraper:
             print(f"📊 EXTRACTION SUMMARY:")
             print(f"   - Total length: {len(base64_data)} chars")
             print(f"   - Stop reason: {stop_reason}")
-            print(f"   - Has padding: {found_padding}")
             print(f"   - First 50 chars: {base64_data[:50]}")
             print(f"   - Last 50 chars: {base64_data[-50:]}")
             
