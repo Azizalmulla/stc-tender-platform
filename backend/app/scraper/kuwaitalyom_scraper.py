@@ -344,12 +344,23 @@ class KuwaitAlyomScraper:
                 
             # Remove any whitespace
             base64_data = re.sub(r'\s+', '', base64_data)
-            print(f"✅ Found base64 PDF data ({len(base64_data)} characters, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
+            
+            # CRITICAL: Strip all trailing '=' padding
+            # urlsafe_b64decode will add correct padding automatically
+            original_length = len(base64_data)
+            base64_data = base64_data.rstrip('=')
+            stripped_padding = original_length - len(base64_data)
+            
+            if stripped_padding > 0:
+                print(f"🔧 Stripped {stripped_padding} trailing '=' characters")
+            
+            print(f"✅ Found base64 PDF data ({len(base64_data)} characters without padding, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
+            print(f"   - Data length % 4: {len(base64_data) % 4}")
             
             # Decode using URL-safe base64 decoder (handles - and _ automatically, adds padding)
             import base64
             try:
-                print(f"🔓 Attempting urlsafe_b64decode...")
+                print(f"🔓 Attempting urlsafe_b64decode (auto-padding)...")
                 pdf_bytes = base64.urlsafe_b64decode(base64_data)
                 print(f"✅ Decoded successfully!")
                 print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
@@ -358,18 +369,7 @@ class KuwaitAlyomScraper:
             except Exception as e:
                 print(f"❌ urlsafe_b64decode failed: {e}")
                 print(f"   - Data length % 4: {len(base64_data) % 4}")
-                print(f"   - Trying manual padding...")
-                # Add padding if needed
-                padding_needed = len(base64_data) % 4
-                if padding_needed:
-                    base64_data += '=' * (4 - padding_needed)
-                    print(f"🔧 Added {4 - padding_needed} padding characters")
-                try:
-                    pdf_bytes = base64.urlsafe_b64decode(base64_data)
-                    print(f"✅ Decoded with manual padding!")
-                except Exception as e2:
-                    print(f"❌ Still failed after padding: {e2}")
-                    raise
+                raise
             
             # Verify it's a valid PDF (starts with %PDF)
             if not pdf_bytes.startswith(b'%PDF'):
