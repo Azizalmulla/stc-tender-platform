@@ -313,11 +313,22 @@ class KuwaitAlyomScraper:
             # Convert URL-safe base64 to standard base64
             base64_data = base64_data.replace('-', '+').replace('_', '/')
             
-            # Add padding if needed (base64 must be multiple of 4)
+            # Strip trailing = padding first (we'll add it back properly)
+            base64_data = base64_data.rstrip('=')
+            
+            # Strip any remaining trailing invalid characters (like } from JavaScript)
+            # Valid standard base64 chars are: A-Z, a-z, 0-9, +, /
+            while base64_data and base64_data[-1] not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/':
+                print(f"🔧 Stripped trailing invalid char: '{base64_data[-1]}'")
+                base64_data = base64_data[:-1]
+            
+            # Add proper padding (base64 must be multiple of 4)
             padding_needed = len(base64_data) % 4
             if padding_needed:
                 base64_data += '=' * (4 - padding_needed)
                 print(f"🔧 Added {4 - padding_needed} padding characters")
+            
+            print(f"📏 Final base64 length: {len(base64_data)} (last 50 chars: ...{base64_data[-50:]})")
             
             # Decode base64 to get PDF bytes
             import base64
