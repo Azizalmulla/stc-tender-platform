@@ -313,6 +313,12 @@ class KuwaitAlyomScraper:
             # Convert URL-safe base64 to standard base64
             base64_data = base64_data.replace('-', '+').replace('_', '/')
             
+            # Add padding if needed (base64 must be multiple of 4)
+            padding_needed = len(base64_data) % 4
+            if padding_needed:
+                base64_data += '=' * (4 - padding_needed)
+                print(f"🔧 Added {4 - padding_needed} padding characters")
+            
             # Decode base64 to get PDF bytes
             import base64
             pdf_bytes = base64.b64decode(base64_data)
