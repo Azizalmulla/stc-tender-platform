@@ -286,21 +286,57 @@ class KuwaitAlyomScraper:
                 return None
             
             # Kuwait's HTML is malformed - source attribute has no closing quote
-            # Extract only valid base64 characters until we hit invalid chars
+            # Extract only valid base64 characters until we hit the end of the first base64 string
             # Kuwait uses URL-safe base64 (- instead of +, _ instead of /)
+            # The HTML has TWO base64 strings concatenated (PDF data, then next attribute)
+            # We stop at the first '=' padding character (marks end of PDF data)
             raw_data = parts[1]
-            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=-_')
+            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_')
             base64_data = []
+            found_padding = False
+            stop_reason = "unknown"
             
-            for char in raw_data:
-                if char in base64_chars:
+            for i, char in enumerate(raw_data):
+                # Once we hit '=', we're in the padding zone
+                if char == '=':
+                    if not found_padding:
+                        found_padding = True
+                        base64_data.append(char)
+                        print(f"🔍 Found first '=' at position {i}")
+                    else:
+                        # Additional '=' padding
+                        base64_data.append(char)
+                elif found_padding:
+                    # After padding, if we hit a non-'=' base64 char, that's the NEXT attribute
+                    # Stop here!
+                    if char in base64_chars:
+                        stop_reason = f"hit base64 char '{char}' after padding (next attribute)"
+                        print(f"🛑 Stopped at position {i}: {stop_reason}")
+                        break
+                    elif char not in (' ', '\t', '\n', '\r'):
+                        # Hit invalid char after padding
+                        stop_reason = f"hit invalid char '{char}' after padding"
+                        print(f"🛑 Stopped at position {i}: {stop_reason}")
+                        break
+                elif char in base64_chars:
                     base64_data.append(char)
-                elif char in (' ', '\t', '\n', '\r'):  # Skip whitespace
+                elif char in (' ', '\t', '\n', '\r'):
+                    # Skip whitespace
                     continue
-                else:  # Hit invalid char (like < or ;), stop
+                else:
+                    # Hit invalid char before any padding
+                    stop_reason = f"hit invalid char '{char}'"
+                    print(f"🛑 Stopped at position {i}: {stop_reason}")
                     break
             
             base64_data = ''.join(base64_data)
+            
+            print(f"📊 EXTRACTION SUMMARY:")
+            print(f"   - Total length: {len(base64_data)} chars")
+            print(f"   - Stop reason: {stop_reason}")
+            print(f"   - Has padding: {found_padding}")
+            print(f"   - First 50 chars: {base64_data[:50]}")
+            print(f"   - Last 50 chars: {base64_data[-50:]}")
             
             if len(base64_data) < 100:
                 print(f"⚠️  Extracted base64 too short: {len(base64_data)} chars")
@@ -309,21 +345,31 @@ class KuwaitAlyomScraper:
             # Remove any whitespace
             base64_data = re.sub(r'\s+', '', base64_data)
             print(f"✅ Found base64 PDF data ({len(base64_data)} characters, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
-            print(f"📏 Last 100 chars: ...{base64_data[-100:]}")
             
             # Decode using URL-safe base64 decoder (handles - and _ automatically, adds padding)
             import base64
             try:
+                print(f"🔓 Attempting urlsafe_b64decode...")
                 pdf_bytes = base64.urlsafe_b64decode(base64_data)
-                print(f"✅ Decoded with urlsafe_b64decode")
+                print(f"✅ Decoded successfully!")
+                print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
+                print(f"   - First 20 bytes: {pdf_bytes[:20]}")
+                print(f"   - Starts with %PDF: {pdf_bytes.startswith(b'%PDF')}")
             except Exception as e:
-                print(f"⚠️  urlsafe_b64decode failed: {e}, trying with manual padding...")
+                print(f"❌ urlsafe_b64decode failed: {e}")
+                print(f"   - Data length % 4: {len(base64_data) % 4}")
+                print(f"   - Trying manual padding...")
                 # Add padding if needed
                 padding_needed = len(base64_data) % 4
                 if padding_needed:
                     base64_data += '=' * (4 - padding_needed)
                     print(f"🔧 Added {4 - padding_needed} padding characters")
-                pdf_bytes = base64.urlsafe_b64decode(base64_data)
+                try:
+                    pdf_bytes = base64.urlsafe_b64decode(base64_data)
+                    print(f"✅ Decoded with manual padding!")
+                except Exception as e2:
+                    print(f"❌ Still failed after padding: {e2}")
+                    raise
             
             # Verify it's a valid PDF (starts with %PDF)
             if not pdf_bytes.startswith(b'%PDF'):
