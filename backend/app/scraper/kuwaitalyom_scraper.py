@@ -331,10 +331,18 @@ class KuwaitAlyomScraper:
             print(f"   - Data length % 4: {len(base64_data) % 4}")
             print(f"   - Last 50 chars: {base64_data[-50:]}")
             
-            # Decode using URL-safe base64 decoder (handles - and _ automatically, adds padding)
+            # Manually add padding if needed
+            # Base64 length must be a multiple of 4
+            padding_needed = (4 - len(base64_data) % 4) % 4
+            if padding_needed:
+                print(f"➕ Adding {padding_needed} padding character(s)")
+                base64_data += '=' * padding_needed
+                print(f"   - New length: {len(base64_data)} (% 4 = {len(base64_data) % 4})")
+            
+            # Decode using URL-safe base64 decoder (handles - and _ automatically)
             import base64
             try:
-                print(f"🔓 Attempting urlsafe_b64decode (auto-padding)...")
+                print(f"🔓 Attempting urlsafe_b64decode...")
                 pdf_bytes = base64.urlsafe_b64decode(base64_data)
                 print(f"✅ Decoded successfully!")
                 print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
@@ -342,7 +350,6 @@ class KuwaitAlyomScraper:
                 print(f"   - Starts with %PDF: {pdf_bytes.startswith(b'%PDF')}")
             except Exception as e:
                 print(f"❌ urlsafe_b64decode failed: {e}")
-                print(f"   - Data length % 4: {len(base64_data) % 4}")
                 raise
             
             # Verify it's a valid PDF (starts with %PDF)
