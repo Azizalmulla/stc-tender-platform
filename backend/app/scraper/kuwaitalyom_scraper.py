@@ -245,6 +245,124 @@ class KuwaitAlyomScraper:
             logger.error(traceback.format_exc())
             return []
     
+    def _screenshot_page_with_browserless(self, edition_id: str, page_number: int) -> Optional[bytes]:
+        """
+        Screenshot a flipbook page using Browserless API
+        
+        Args:
+            edition_id: Gazette edition ID
+            page_number: Page number in the magazine
+            
+        Returns:
+            Screenshot bytes (PNG) if successful, None otherwise
+        """
+        import os
+        import requests
+        
+        browserless_api_key = os.getenv('BROWSERLESS_API_KEY')
+        if not browserless_api_key or browserless_api_key == 'paste-your-browserless-api-key-here':
+            print(f"⚠️  BROWSERLESS_API_KEY not configured, skipping screenshot")
+            return None
+        
+        try:
+            print(f"📸 Screenshotting page {page_number} with Browserless...")
+            
+            flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+            
+            # Browserless screenshot API
+            browserless_url = f"https://chrome.browserless.io/screenshot?token={browserless_api_key}"
+            
+            payload = {
+                "url": flip_url,
+                "options": {
+                    "fullPage": False,
+                    "type": "png",
+                    "encoding": "binary"
+                },
+                "gotoOptions": {
+                    "waitUntil": "networkidle2"
+                }
+            }
+            
+            response = requests.post(browserless_url, json=payload, timeout=30)
+            
+            if response.status_code != 200:
+                print(f"❌ Browserless API error: {response.status_code}")
+                print(f"   Response: {response.text[:200]}")
+                return None
+            
+            screenshot_bytes = response.content
+            print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+            
+            return screenshot_bytes
+            
+        except Exception as e:
+            print(f"❌ Error screenshotting with Browserless: {e}")
+            return None
+    
+    def _extract_text_from_image(self, image_bytes: bytes) -> Optional[str]:
+        """
+        Extract text from image using Google Document AI
+        
+        Args:
+            image_bytes: Image bytes (PNG/JPEG)
+            
+        Returns:
+            Extracted text if successful, None otherwise
+        """
+        try:
+            from google.cloud import documentai_v1 as documentai
+            from google.api_core.client_options import ClientOptions
+            import os
+            
+            # Check if Google Doc AI is configured
+            processor_name = os.getenv('DOCUMENTAI_PROCESSOR_NAME')
+            if not processor_name:
+                print(f"⚠️  DOCUMENTAI_PROCESSOR_NAME not configured")
+                return None
+            
+            print(f"  🌐 Using Google Document AI for image OCR...")
+            
+            # Extract location from processor name
+            # Format: projects/PROJECT_ID/locations/LOCATION/processors/PROCESSOR_ID
+            parts = processor_name.split('/')
+            location = parts[3] if len(parts) > 3 else 'us'
+            
+            # Set API endpoint
+            opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
+            client = documentai.DocumentProcessorServiceClient(client_options=opts)
+            
+            # Create document object for image
+            raw_document = documentai.RawDocument(
+                content=image_bytes,
+                mime_type="image/png"
+            )
+            
+            # Process request
+            request = documentai.ProcessRequest(
+                name=processor_name,
+                raw_document=raw_document
+            )
+            
+            result = client.process_document(request=request)
+            document = result.document
+            
+            # Extract text
+            text = document.text
+            
+            if text and len(text.strip()) > 0:
+                print(f"  ✅ Google Doc AI extracted {len(text)} characters from image")
+                return text
+            else:
+                print(f"  ⚠️  Google Doc AI returned empty text")
+                return None
+                
+        except Exception as e:
+            print(f"  ❌ Google Document AI failed: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return None
+    
     def _download_magazine_pdf(self, edition_id: str) -> Optional[bytes]:
         """
         Download the full magazine PDF for an edition (cached per edition)
@@ -295,13 +413,22 @@ class KuwaitAlyomScraper:
             base64_data = []
             stop_reason = "unknown"
             
+            padding_count = 0
             for i, char in enumerate(raw_data):
-                # Once we hit '=', STOP - don't include it
                 if char == '=':
-                    stop_reason = f"hit padding '=' (stopped before it)"
-                    print(f"🛑 Stopped at position {i}: {stop_reason}")
-                    break
+                    # Include up to 2 padding chars
+                    padding_count += 1
+                    base64_data.append(char)
+                    if padding_count >= 2:
+                        stop_reason = f"collected 2 padding chars"
+                        print(f"🛑 Stopped at position {i+1}: {stop_reason}")
+                        break
                 elif char in base64_chars:
+                    if padding_count > 0:
+                        # Hit data after padding - that's the next attribute, stop
+                        stop_reason = f"hit data after padding"
+                        print(f"🛑 Stopped at position {i}: {stop_reason}")
+                        break
                     base64_data.append(char)
                 elif char in (' ', '\t', '\n', '\r'):
                     # Skip whitespace
@@ -330,14 +457,6 @@ class KuwaitAlyomScraper:
             print(f"✅ Found base64 PDF data ({len(base64_data)} characters, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
             print(f"   - Data length % 4: {len(base64_data) % 4}")
             print(f"   - Last 50 chars: {base64_data[-50:]}")
-            
-            # Manually add padding if needed
-            # Base64 length must be a multiple of 4
-            padding_needed = (4 - len(base64_data) % 4) % 4
-            if padding_needed:
-                print(f"➕ Adding {padding_needed} padding character(s)")
-                base64_data += '=' * padding_needed
-                print(f"   - New length: {len(base64_data)} (% 4 = {len(base64_data) % 4})")
             
             # Decode using URL-safe base64 decoder (handles - and _ automatically)
             import base64
@@ -417,8 +536,8 @@ class KuwaitAlyomScraper:
         """
         Extract text from a specific page in the Kuwait Alyom gazette
         
-        Downloads the full magazine PDF once per edition (cached), extracts the
-        specific page, and sends it to Google Doc AI for OCR.
+        Uses Browserless API to screenshot the page, then sends to Google Doc AI for OCR.
+        Falls back to PDF extraction if Browserless is not configured.
         
         Args:
             edition_id: Gazette edition ID
@@ -428,30 +547,40 @@ class KuwaitAlyomScraper:
             Extracted text if successful, None otherwise
         """
         try:
-            print(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
+            print(f"📄 Extracting text from page: Edition {edition_id}, Page {page_number}")
             
-            # Step 1: Download full magazine PDF (or get from cache)
+            # Method 1: Try Browserless screenshot (PRIMARY METHOD)
+            screenshot_bytes = self._screenshot_page_with_browserless(edition_id, page_number)
+            if screenshot_bytes:
+                print(f"🖼️  Using screenshot-based extraction...")
+                text = self._extract_text_from_image(screenshot_bytes)
+                if text and len(text) > 50:
+                    print(f"✅ Extracted {len(text)} characters from screenshot")
+                    return text
+                else:
+                    print(f"⚠️  Screenshot extraction returned minimal text, trying PDF fallback...")
+            
+            # Method 2: Fallback to PDF extraction
+            print(f"📄 Falling back to PDF extraction...")
             magazine_pdf = self._download_magazine_pdf(edition_id)
             if not magazine_pdf:
                 return None
             
-            # Step 2: Extract the specific page as a separate PDF
             page_pdf = self._extract_page_from_pdf(magazine_pdf, page_number)
             if not page_pdf:
                 return None
             
-            # Step 3: Use PDF extractor (with Google Doc AI OCR) to extract text from this single page
             text = self.pdf_extractor.extract_text_from_bytes(page_pdf)
             
-            if text and len(text) > 50:  # Ensure we got meaningful content
-                print(f"✅ Extracted {len(text)} characters from page {page_number}")
+            if text and len(text) > 50:
+                print(f"✅ Extracted {len(text)} characters from PDF")
                 return text
             else:
                 print(f"⚠️  PDF extraction returned minimal text")
                 return None
                 
         except Exception as e:
-            print(f"❌ Error extracting PDF text: {e}")
+            print(f"❌ Error extracting text: {e}")
             import traceback
             print(traceback.format_exc())
             return None
