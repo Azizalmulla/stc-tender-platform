@@ -46,6 +46,7 @@ class KuwaitAlyomScraper:
         
         self.is_authenticated = False
         self.pdf_extractor = PDFExtractor()  # Initialize PDF extractor with OCR
+        self._magazine_cache = {}  # Cache full magazine PDFs by edition_id
         
     def login(self) -> bool:
         """
@@ -241,36 +242,39 @@ class KuwaitAlyomScraper:
         except Exception as e:
             logger.error(f"❌ Error fetching tenders: {e}")
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(traceback.format_exc())
             return []
     
-    def extract_pdf_text(self, edition_id: int, page_number: int) -> Optional[str]:
+    def _download_magazine_pdf(self, edition_id: str) -> Optional[bytes]:
         """
-        Extract text from a specific PDF page from the gazette using OCR
+        Download the full magazine PDF for an edition (cached per edition)
         
-        The flipbook viewer embeds the PDF as base64 data URI in the page.
-        We extract this base64 data, decode it, and send to Google Doc AI for OCR.
+        Kuwait Alyom embeds the entire magazine as base64 in the source attribute.
+        We download it once per edition and cache it.
         
         Args:
             edition_id: Gazette edition ID
-            page_number: Page number in the edition
             
         Returns:
-            Extracted text if successful, None otherwise
+            Full magazine PDF bytes if successful, None otherwise
         """
+        # Check cache first
+        if edition_id in self._magazine_cache:
+            print(f"📦 Using cached PDF for edition {edition_id}")
+            return self._magazine_cache[edition_id]
+        
         try:
-            print(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
+            print(f"⬇️  Downloading full magazine PDF for edition {edition_id}...")
             
-            # Visit the flipbook viewer page
-            flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+            # Visit any flipbook page to get the source attribute (page 1 is fine)
+            flip_url = f"{self.base_url}/flip/index?id={edition_id}&no=1"
             response = self.session.get(flip_url, timeout=30)
             
             if response.status_code != 200:
                 print(f"⚠️  Failed to load flipbook page: {response.status_code}")
                 return None
             
-            # Search for base64 PDF data in the page using string split (NO REGEX)
-            # The PDF is embedded in: <div class="PDFFlip" id="PDFF" source="BASE64_DATA">
+            # Extract base64 PDF data from source attribute
             if 'source="' not in response.text:
                 print(f"⚠️  Could not find source attribute in flipbook page")
                 return None
@@ -301,12 +305,12 @@ class KuwaitAlyomScraper:
             if len(base64_data) < 100:
                 print(f"⚠️  Extracted base64 too short: {len(base64_data)} chars")
                 return None
-            # Remove any whitespace (newlines, spaces) from base64 data
+                
+            # Remove any whitespace
             base64_data = re.sub(r'\s+', '', base64_data)
-            print(f"✅ Found base64 PDF data ({len(base64_data)} characters)")
+            print(f"✅ Found base64 PDF data ({len(base64_data)} characters, ~{len(base64_data) * 0.75 / 1024 / 1024:.1f}MB)")
             
             # Convert URL-safe base64 to standard base64
-            # Kuwait uses - instead of + and _ instead of /
             base64_data = base64_data.replace('-', '+').replace('_', '/')
             
             # Decode base64 to get PDF bytes
@@ -318,13 +322,94 @@ class KuwaitAlyomScraper:
                 print(f"⚠️  Decoded data is not a valid PDF")
                 return None
             
-            print(f"✅ Decoded PDF ({len(pdf_bytes)} bytes)")
+            print(f"✅ Downloaded full magazine PDF ({len(pdf_bytes) / 1024 / 1024:.1f}MB)")
             
-            # Use PDF extractor (with Google Doc AI OCR) to extract text
-            text = self.pdf_extractor.extract_text_from_bytes(pdf_bytes)
+            # Cache it
+            self._magazine_cache[edition_id] = pdf_bytes
+            
+            return pdf_bytes
+                
+        except Exception as e:
+            print(f"❌ Error downloading magazine PDF: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return None
+    
+    def _extract_page_from_pdf(self, pdf_bytes: bytes, page_number: int) -> Optional[bytes]:
+        """
+        Extract a specific page from a PDF as a separate single-page PDF
+        
+        Args:
+            pdf_bytes: Full PDF bytes
+            page_number: Page number to extract (1-indexed)
+            
+        Returns:
+            Single-page PDF bytes if successful, None otherwise
+        """
+        try:
+            from PyPDF2 import PdfReader, PdfWriter
+            import io
+            
+            # Read the full PDF
+            pdf_reader = PdfReader(io.BytesIO(pdf_bytes))
+            total_pages = len(pdf_reader.pages)
+            
+            # Validate page number (convert to 0-indexed)
+            page_index = page_number - 1
+            if page_index < 0 or page_index >= total_pages:
+                print(f"⚠️  Page {page_number} out of range (total pages: {total_pages})")
+                return None
+            
+            # Create a new PDF with just this page
+            pdf_writer = PdfWriter()
+            pdf_writer.add_page(pdf_reader.pages[page_index])
+            
+            # Write to bytes
+            output = io.BytesIO()
+            pdf_writer.write(output)
+            page_pdf_bytes = output.getvalue()
+            
+            print(f"✅ Extracted page {page_number}/{total_pages} ({len(page_pdf_bytes) / 1024:.1f}KB)")
+            return page_pdf_bytes
+            
+        except Exception as e:
+            print(f"❌ Error extracting page {page_number} from PDF: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return None
+    
+    def extract_pdf_text(self, edition_id: str, page_number: int) -> Optional[str]:
+        """
+        Extract text from a specific page in the Kuwait Alyom gazette
+        
+        Downloads the full magazine PDF once per edition (cached), extracts the
+        specific page, and sends it to Google Doc AI for OCR.
+        
+        Args:
+            edition_id: Gazette edition ID
+            page_number: Page number in the edition
+            
+        Returns:
+            Extracted text if successful, None otherwise
+        """
+        try:
+            print(f"📄 Extracting text from PDF: Edition {edition_id}, Page {page_number}")
+            
+            # Step 1: Download full magazine PDF (or get from cache)
+            magazine_pdf = self._download_magazine_pdf(edition_id)
+            if not magazine_pdf:
+                return None
+            
+            # Step 2: Extract the specific page as a separate PDF
+            page_pdf = self._extract_page_from_pdf(magazine_pdf, page_number)
+            if not page_pdf:
+                return None
+            
+            # Step 3: Use PDF extractor (with Google Doc AI OCR) to extract text from this single page
+            text = self.pdf_extractor.extract_text_from_bytes(page_pdf)
             
             if text and len(text) > 50:  # Ensure we got meaningful content
-                print(f"✅ Extracted {len(text)} characters from PDF")
+                print(f"✅ Extracted {len(text)} characters from page {page_number}")
                 return text
             else:
                 print(f"⚠️  PDF extraction returned minimal text")
