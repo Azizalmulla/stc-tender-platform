@@ -269,8 +269,8 @@ class KuwaitAlyomScraper:
             
             flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             
-            # Browserless screenshot API
-            browserless_url = f"https://chrome.browserless.io/screenshot?token={browserless_api_key}"
+            # Browserless screenshot API (updated endpoint)
+            browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}"
             
             payload = {
                 "url": flip_url,
