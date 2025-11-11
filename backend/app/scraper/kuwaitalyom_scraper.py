@@ -257,7 +257,7 @@ class KuwaitAlyomScraper:
             Screenshot bytes (PNG) if successful, None otherwise
         """
         import asyncio
-        from pyppeteer import launch
+        from concurrent.futures import ThreadPoolExecutor
         import os
         
         try:
@@ -265,10 +265,10 @@ class KuwaitAlyomScraper:
             
             flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             
-            # Run async screenshot function
-            screenshot_bytes = asyncio.get_event_loop().run_until_complete(
-                self._async_screenshot(flip_url)
-            )
+            # Run async screenshot in a separate thread to avoid event loop conflicts
+            with ThreadPoolExecutor() as executor:
+                future = executor.submit(self._run_async_screenshot, flip_url)
+                screenshot_bytes = future.result(timeout=60)
             
             if screenshot_bytes:
                 print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
@@ -278,6 +278,13 @@ class KuwaitAlyomScraper:
         except Exception as e:
             print(f"❌ Error screenshotting with Puppeteer: {e}")
             return None
+    
+    def _run_async_screenshot(self, url: str) -> Optional[bytes]:
+        """
+        Helper to run async screenshot in a new thread with its own event loop
+        """
+        import asyncio
+        return asyncio.run(self._async_screenshot(url))
     
     async def _async_screenshot(self, url: str) -> Optional[bytes]:
         """
