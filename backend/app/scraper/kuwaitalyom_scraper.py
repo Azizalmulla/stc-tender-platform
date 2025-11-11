@@ -292,7 +292,8 @@ class KuwaitAlyomScraper:
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
                 },
-                "cookies": cookies  # Pass authenticated session cookies
+                "cookies": cookies,  # Pass authenticated session cookies
+                "waitForTimeout": 5000  # Wait 5 seconds for flipbook to render PDF
             }
             
             response = requests.post(browserless_url, json=payload, timeout=30)
