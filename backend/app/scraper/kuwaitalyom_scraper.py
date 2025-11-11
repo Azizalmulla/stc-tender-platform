@@ -275,20 +275,12 @@ class KuwaitAlyomScraper:
             payload = {
                 "url": flip_url,
                 "options": {
-                    "fullPage": True,  # Capture full page content
+                    "fullPage": False,
                     "type": "png",
                     "encoding": "binary"
                 },
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
-                },
-                "viewport": {
-                    "width": 1920,
-                    "height": 1080
-                },
-                "waitForSelector": {
-                    "selector": "#PDFFlip, .page-content, canvas",  # Wait for PDF content to load
-                    "timeout": 10000
                 }
             }
             
