@@ -353,3 +353,81 @@ async def delete_all_tenders(authorization: Optional[str] = Header(None)):
     except Exception as e:
         print(f"❌ Error during tender deletion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/generate-embeddings")
+async def generate_embeddings(authorization: Optional[str] = Header(None)):
+    """
+    Generate embeddings for all tenders that don't have them
+    Protected by authorization header for security
+    """
+    # Simple auth check
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        from app.db.session import SessionLocal
+        from app.models.tender import TenderEmbedding
+        from app.ai.openai_service import OpenAIService
+        
+        db = SessionLocal()
+        ai_service = OpenAIService()
+        
+        # Get all tenders without embeddings
+        tenders_without_embeddings = db.query(Tender).outerjoin(
+            TenderEmbedding, Tender.id == TenderEmbedding.tender_id
+        ).filter(
+            TenderEmbedding.id == None
+        ).all()
+        
+        print(f"📊 Found {len(tenders_without_embeddings)} tenders without embeddings")
+        
+        if not tenders_without_embeddings:
+            db.close()
+            return {
+                "status": "success",
+                "message": "All tenders already have embeddings",
+                "generated": 0
+            }
+        
+        generated = 0
+        
+        for tender in tenders_without_embeddings:
+            try:
+                # Generate text for embedding
+                text = f"{tender.title or ''} {tender.summary_ar or ''} {tender.summary_en or ''} {tender.ministry or ''}"
+                
+                # Generate embedding
+                embedding = ai_service.generate_embedding(text)
+                
+                # Create embedding record
+                tender_embedding = TenderEmbedding(
+                    tender_id=tender.id,
+                    embedding=embedding
+                )
+                db.add(tender_embedding)
+                generated += 1
+                
+                if generated % 10 == 0:
+                    print(f"  ✅ Generated {generated} embeddings...")
+                    db.commit()
+                    
+            except Exception as e:
+                print(f"  ⚠️  Error generating embedding for tender {tender.id}: {e}")
+                continue
+        
+        db.commit()
+        db.close()
+        
+        print(f"✅ Successfully generated {generated} embeddings")
+        
+        return {
+            "status": "success",
+            "message": f"Generated embeddings for {generated} tenders",
+            "generated": generated
+        }
+        
+    except Exception as e:
+        print(f"❌ Error generating embeddings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
