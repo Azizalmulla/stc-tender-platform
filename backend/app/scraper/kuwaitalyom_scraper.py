@@ -280,8 +280,7 @@ class KuwaitAlyomScraper:
                     "encoding": "binary"
                 },
                 "gotoOptions": {
-                    "waitUntil": "networkidle2",
-                    "ignoreHTTPSErrors": True  # Ignore SSL cert errors from Kuwait gov site
+                    "waitUntil": "networkidle2"
                 }
             }
             
