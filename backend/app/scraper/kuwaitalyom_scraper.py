@@ -272,6 +272,16 @@ class KuwaitAlyomScraper:
             # Browserless screenshot API (updated endpoint)
             browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}"
             
+            # Convert session cookies to Browserless format
+            cookies = []
+            for cookie in self.session.cookies:
+                cookies.append({
+                    "name": cookie.name,
+                    "value": cookie.value,
+                    "domain": cookie.domain or ".kuwaitalyawm.media.gov.kw",
+                    "path": cookie.path or "/"
+                })
+            
             payload = {
                 "url": flip_url,
                 "options": {
@@ -281,7 +291,8 @@ class KuwaitAlyomScraper:
                 },
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
-                }
+                },
+                "cookies": cookies  # Pass authenticated session cookies
             }
             
             response = requests.post(browserless_url, json=payload, timeout=30)
