@@ -275,12 +275,20 @@ class KuwaitAlyomScraper:
             payload = {
                 "url": flip_url,
                 "options": {
-                    "fullPage": False,
+                    "fullPage": True,  # Capture full page content
                     "type": "png",
                     "encoding": "binary"
                 },
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
+                },
+                "viewport": {
+                    "width": 1920,
+                    "height": 1080
+                },
+                "waitForSelector": {
+                    "selector": "#PDFFlip, .page-content, canvas",  # Wait for PDF content to load
+                    "timeout": 10000
                 }
             }
             
@@ -377,6 +385,7 @@ class KuwaitAlyomScraper:
             
             if text and len(text.strip()) > 0:
                 print(f"  ✅ Google Doc AI extracted {len(text)} characters from image")
+                print(f"  📝 Preview: {text[:200]}...")  # Show first 200 chars
                 return text
             else:
                 print(f"  ⚠️  Google Doc AI returned empty text")
