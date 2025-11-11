@@ -378,7 +378,7 @@ async def generate_embeddings(authorization: Optional[str] = Header(None)):
         tenders_without_embeddings = db.query(Tender).outerjoin(
             TenderEmbedding, Tender.id == TenderEmbedding.tender_id
         ).filter(
-            TenderEmbedding.id == None
+            TenderEmbedding.tender_id.is_(None)
         ).all()
         
         print(f"📊 Found {len(tenders_without_embeddings)} tenders without embeddings")
