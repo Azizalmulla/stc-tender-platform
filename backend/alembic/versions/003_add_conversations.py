@@ -1,7 +1,7 @@
 """Add conversations and messages tables
 
 Revision ID: 003
-Revises: 001
+Revises: 002_v2
 Create Date: 2025-11-07
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '003'
-down_revision = '001'
+down_revision = '002_v2'
 branch_labels = None
 depends_on = None
 
