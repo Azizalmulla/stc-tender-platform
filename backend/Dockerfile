@@ -2,14 +2,24 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including Chrome for Puppeteer
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     tesseract-ocr \
     tesseract-ocr-ara \
     libpq-dev \
     gcc \
+    chromium \
+    chromium-driver \
+    fonts-liberation \
+    libnss3 \
+    libxss1 \
+    libappindicator3-1 \
+    libgbm1 \
     && rm -rf /var/lib/apt/lists/*
+
+# Set Chrome executable path for Pyppeteer
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Copy requirements first for caching
 COPY requirements.txt .
