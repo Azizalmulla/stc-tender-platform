@@ -245,9 +245,9 @@ class KuwaitAlyomScraper:
             logger.error(traceback.format_exc())
             return []
     
-    def _screenshot_page_with_puppeteer(self, edition_id: str, page_number: int) -> Optional[bytes]:
+    def _screenshot_page_with_playwright(self, edition_id: str, page_number: int) -> Optional[bytes]:
         """
-        Screenshot a flipbook page using Puppeteer (headless Chrome)
+        Screenshot a flipbook page using Playwright (headless Chrome)
         
         Args:
             edition_id: Gazette edition ID
@@ -256,94 +256,63 @@ class KuwaitAlyomScraper:
         Returns:
             Screenshot bytes (PNG) if successful, None otherwise
         """
-        import asyncio
-        from concurrent.futures import ThreadPoolExecutor
-        import os
+        from playwright.sync_api import sync_playwright
+        import time
         
         try:
-            print(f"📸 Screenshotting page {page_number} with Puppeteer...")
+            print(f"📸 Screenshotting page {page_number} with Playwright...")
             
             flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             
-            # Run async screenshot in a separate thread to avoid event loop conflicts
-            with ThreadPoolExecutor() as executor:
-                future = executor.submit(self._run_async_screenshot, flip_url)
-                screenshot_bytes = future.result(timeout=60)
-            
-            if screenshot_bytes:
-                print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
-            
-            return screenshot_bytes
-            
-        except Exception as e:
-            print(f"❌ Error screenshotting with Puppeteer: {e}")
-            return None
-    
-    def _run_async_screenshot(self, url: str) -> Optional[bytes]:
-        """
-        Helper to run async screenshot in a new thread with its own event loop
-        """
-        import asyncio
-        return asyncio.run(self._async_screenshot(url))
-    
-    async def _async_screenshot(self, url: str) -> Optional[bytes]:
-        """
-        Async helper to take screenshot with Puppeteer
-        
-        Args:
-            url: URL to screenshot
-            
-        Returns:
-            Screenshot bytes (PNG) if successful, None otherwise
-        """
-        import os
-        from pyppeteer import launch
-        
-        browser = None
-        try:
-            # Launch browser with necessary args for running in container
-            browser = await launch({
-                'headless': True,
-                'executablePath': os.getenv('PUPPETEER_EXECUTABLE_PATH', '/usr/bin/chromium'),
-                'args': [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                ]
-            })
-            
-            page = await browser.newPage()
-            
-            # Set cookies for authentication
-            cookies = []
-            for cookie in self.session.cookies:
-                cookies.append({
-                    'name': cookie.name,
-                    'value': cookie.value,
-                    'domain': cookie.domain or '.kuwaitalyawm.media.gov.kw',
-                    'path': cookie.path or '/'
-                })
-            
-            if cookies:
-                await page.setCookie(*cookies)
-            
-            # Navigate to page and wait for network to be idle
-            await page.goto(url, {'waitUntil': 'networkidle2', 'timeout': 30000})
-            
-            # Wait 5 seconds for JavaScript flipbook to render PDF content
-            await asyncio.sleep(5)
-            
-            # Take screenshot
-            screenshot_bytes = await page.screenshot({'type': 'png'})
-            
-            await browser.close()
-            return screenshot_bytes
+            with sync_playwright() as p:
+                # Launch browser
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                    ]
+                )
+                
+                # Create new page
+                context = browser.new_context()
+                page = context.new_page()
+                
+                # Set cookies for authentication
+                cookies = []
+                for cookie in self.session.cookies:
+                    cookies.append({
+                        'name': cookie.name,
+                        'value': cookie.value,
+                        'domain': cookie.domain or '.kuwaitalyawm.media.gov.kw',
+                        'path': cookie.path or '/',
+                        'secure': False,
+                        'httpOnly': False
+                    })
+                
+                if cookies:
+                    context.add_cookies(cookies)
+                
+                # Navigate to page and wait for network to be idle
+                page.goto(flip_url, wait_until='networkidle', timeout=30000)
+                
+                # Wait 5 seconds for JavaScript flipbook to render PDF content
+                time.sleep(5)
+                
+                # Take screenshot
+                screenshot_bytes = page.screenshot(type='png')
+                
+                browser.close()
+                
+                if screenshot_bytes:
+                    print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+                
+                return screenshot_bytes
             
         except Exception as e:
-            if browser:
-                await browser.close()
-            print(f"  ⚠️  Puppeteer error: {e}")
+            print(f"❌ Error screenshotting with Playwright: {e}")
             return None
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[str]:
@@ -621,8 +590,8 @@ class KuwaitAlyomScraper:
         try:
             print(f"📄 Extracting text from page: Edition {edition_id}, Page {page_number}")
             
-            # Method 1: Try Puppeteer screenshot (PRIMARY METHOD)
-            screenshot_bytes = self._screenshot_page_with_puppeteer(edition_id, page_number)
+            # Method 1: Try Playwright screenshot (PRIMARY METHOD)
+            screenshot_bytes = self._screenshot_page_with_playwright(edition_id, page_number)
             if screenshot_bytes:
                 print(f"🖼️  Using screenshot-based extraction...")
                 text = self._extract_text_from_image(screenshot_bytes)
