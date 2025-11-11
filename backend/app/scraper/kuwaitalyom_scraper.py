@@ -313,8 +313,11 @@ class KuwaitAlyomScraper:
         """
         try:
             from google.cloud import documentai_v1 as documentai
+            from google.oauth2 import service_account
             from google.api_core.client_options import ClientOptions
             import os
+            import base64
+            import json
             
             # Check if Google Doc AI is configured
             processor_name = os.getenv('DOCUMENTAI_PROCESSOR_NAME')
@@ -329,9 +332,31 @@ class KuwaitAlyomScraper:
             parts = processor_name.split('/')
             location = parts[3] if len(parts) > 3 else 'us'
             
+            # Load credentials (support both base64 and file-based)
+            credentials = None
+            base64_creds = os.getenv('GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS_BASE64')
+            if base64_creds:
+                try:
+                    creds_json = base64.b64decode(base64_creds).decode('utf-8')
+                    creds_dict = json.loads(creds_json)
+                    credentials = service_account.Credentials.from_service_account_info(creds_dict)
+                except Exception as e:
+                    print(f"  ⚠️  Error loading base64 credentials: {e}")
+            elif os.getenv('GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS'):
+                credentials = service_account.Credentials.from_service_account_file(
+                    os.getenv('GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS')
+                )
+            
+            if not credentials:
+                print(f"  ⚠️  Google Cloud credentials not found")
+                return None
+            
             # Set API endpoint
             opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
-            client = documentai.DocumentProcessorServiceClient(client_options=opts)
+            client = documentai.DocumentProcessorServiceClient(
+                credentials=credentials, 
+                client_options=opts
+            )
             
             # Create document object for image
             raw_document = documentai.RawDocument(
