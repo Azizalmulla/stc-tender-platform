@@ -281,7 +281,8 @@ class KuwaitAlyomScraper:
                 },
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
-                }
+                },
+                "ignoreHTTPSErrors": True  # Ignore SSL cert errors from Kuwait gov site
             }
             
             response = requests.post(browserless_url, json=payload, timeout=30)
