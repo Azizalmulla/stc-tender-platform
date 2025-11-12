@@ -256,6 +256,9 @@ class KuwaitAlyomScraper:
         Returns:
             Screenshot bytes (PNG) if successful, None otherwise
         """
+        import os
+        import requests
+        
         try:
             print(f"📸 Screenshotting page {page_number} with Browserless...")
             
