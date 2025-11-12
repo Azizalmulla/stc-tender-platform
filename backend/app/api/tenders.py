@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_, or_
+from sqlalchemy import desc, and_, or_, func
 from typing import List, Optional
 from datetime import datetime, timedelta
 from app.db.session import get_db
@@ -124,13 +124,13 @@ async def get_tender_stats(db: Session = Depends(get_db)):
     # Count by category
     categories = db.query(
         Tender.category, 
-        db.func.count(Tender.id)
+        func.count(Tender.id)
     ).group_by(Tender.category).all()
     
     # Count by ministry
     ministries = db.query(
         Tender.ministry, 
-        db.func.count(Tender.id)
+        func.count(Tender.id)
     ).filter(Tender.ministry.isnot(None)).group_by(Tender.ministry).limit(10).all()
     
     # Recent tenders (last 7 days)

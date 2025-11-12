@@ -131,6 +131,13 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                 deadline_history = None
                 postponement_reason = None
                 
+                # Convert new_deadline to datetime if it's a string
+                if new_deadline and isinstance(new_deadline, str):
+                    try:
+                        new_deadline = datetime.fromisoformat(new_deadline.replace('Z', '+00:00'))
+                    except:
+                        new_deadline = None
+                
                 if existing_by_number and existing_by_number.deadline and new_deadline:
                     if new_deadline > existing_by_number.deadline:
                         is_postponed = True
