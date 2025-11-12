@@ -380,21 +380,10 @@ class KuwaitAlyomScraper:
                 mime_type="image/png"
             )
             
-            # Configure OCR for Arabic text
-            process_options = documentai.ProcessOptions(
-                ocr_config=documentai.OcrConfig(
-                    language_hints=["ar", "en"],  # Arabic primary, English secondary
-                    enable_native_pdf_parsing=False,
-                    enable_image_quality_scores=True,
-                    enable_symbol=True,
-                )
-            )
-            
-            # Process request with Arabic language hints
+            # Process request (higher resolution screenshots should improve OCR accuracy)
             request = documentai.ProcessRequest(
                 name=processor_name,
-                raw_document=raw_document,
-                process_options=process_options
+                raw_document=raw_document
             )
             
             result = client.process_document(request=request)
