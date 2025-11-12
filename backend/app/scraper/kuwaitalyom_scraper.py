@@ -287,7 +287,13 @@ class KuwaitAlyomScraper:
                 "options": {
                     "fullPage": False,
                     "type": "png",
-                    "encoding": "binary"
+                    "encoding": "binary",
+                    "quality": 100,  # Maximum quality for better OCR
+                },
+                "viewport": {
+                    "width": 1920,   # Higher resolution for better text clarity
+                    "height": 1080,
+                    "deviceScaleFactor": 2  # Retina/2x scaling for sharper text
                 },
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
@@ -375,10 +381,21 @@ class KuwaitAlyomScraper:
                 mime_type="image/png"
             )
             
-            # Process request
+            # Configure OCR for Arabic text
+            process_options = documentai.ProcessOptions(
+                ocr_config=documentai.OcrConfig(
+                    language_hints=["ar", "en"],  # Arabic primary, English secondary
+                    enable_native_pdf_parsing=False,
+                    enable_image_quality_scores=True,
+                    enable_symbol=True,
+                )
+            )
+            
+            # Process request with Arabic language hints
             request = documentai.ProcessRequest(
                 name=processor_name,
-                raw_document=raw_document
+                raw_document=raw_document,
+                process_options=process_options
             )
             
             result = client.process_document(request=request)
