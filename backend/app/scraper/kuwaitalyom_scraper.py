@@ -287,8 +287,7 @@ class KuwaitAlyomScraper:
                 "options": {
                     "fullPage": False,
                     "type": "png",
-                    "encoding": "binary",
-                    "quality": 100,  # Maximum quality for better OCR
+                    "encoding": "binary"
                 },
                 "viewport": {
                     "width": 1920,   # Higher resolution for better text clarity
