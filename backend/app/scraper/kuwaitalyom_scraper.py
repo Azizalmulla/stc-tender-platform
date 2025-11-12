@@ -256,17 +256,50 @@ class KuwaitAlyomScraper:
         Returns:
             Screenshot bytes (PNG) if successful, None otherwise
         """
-        from playwright.sync_api import sync_playwright
-        import time
+        import asyncio
         
         try:
             print(f"📸 Screenshotting page {page_number} with Playwright...")
             
             flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             
-            with sync_playwright() as p:
+            # Run async Playwright in new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                screenshot_bytes = loop.run_until_complete(
+                    self._async_playwright_screenshot(flip_url)
+                )
+            finally:
+                loop.close()
+            
+            if screenshot_bytes:
+                print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+            
+            return screenshot_bytes
+            
+        except Exception as e:
+            print(f"❌ Error screenshotting with Playwright: {e}")
+            return None
+    
+    async def _async_playwright_screenshot(self, url: str) -> Optional[bytes]:
+        """
+        Async Playwright screenshot helper
+        
+        Args:
+            url: URL to screenshot
+            
+        Returns:
+            Screenshot bytes (PNG) if successful, None otherwise
+        """
+        from playwright.async_api import async_playwright
+        import asyncio
+        
+        browser = None
+        try:
+            async with async_playwright() as p:
                 # Launch browser
-                browser = p.chromium.launch(
+                browser = await p.chromium.launch(
                     headless=True,
                     args=[
                         '--no-sandbox',
@@ -277,8 +310,8 @@ class KuwaitAlyomScraper:
                 )
                 
                 # Create new page
-                context = browser.new_context()
-                page = context.new_page()
+                context = await browser.new_context()
+                page = await context.new_page()
                 
                 # Set cookies for authentication
                 cookies = []
@@ -293,26 +326,25 @@ class KuwaitAlyomScraper:
                     })
                 
                 if cookies:
-                    context.add_cookies(cookies)
+                    await context.add_cookies(cookies)
                 
                 # Navigate to page and wait for network to be idle
-                page.goto(flip_url, wait_until='networkidle', timeout=30000)
+                await page.goto(url, wait_until='networkidle', timeout=30000)
                 
                 # Wait 5 seconds for JavaScript flipbook to render PDF content
-                time.sleep(5)
+                await asyncio.sleep(5)
                 
                 # Take screenshot
-                screenshot_bytes = page.screenshot(type='png')
+                screenshot_bytes = await page.screenshot(type='png')
                 
-                browser.close()
-                
-                if screenshot_bytes:
-                    print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+                await browser.close()
                 
                 return screenshot_bytes
             
         except Exception as e:
-            print(f"❌ Error screenshotting with Playwright: {e}")
+            if browser:
+                await browser.close()
+            print(f"  ⚠️  Playwright async error: {e}")
             return None
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[str]:
