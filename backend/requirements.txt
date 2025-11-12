@@ -19,7 +19,6 @@ trafilatura==1.6.4
 requests==2.31.0
 httpx==0.26.0
 cloudscraper==1.2.71  # Bypass Cloudflare protection
-playwright==1.40.0  # Headless browser automation for screenshots
 
 # PDF Processing
 PyMuPDF==1.23.22
