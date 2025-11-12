@@ -128,7 +128,7 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
 
       <CardFooter className="gap-2">
         <Button asChild className="flex-1 gap-2" variant="default">
-          <Link href={`/tenders/${tender.id}`}>
+          <Link href={`/tender/${tender.id}`}>
             {t('View Details', 'عرض التفاصيل')}
           </Link>
         </Button>
