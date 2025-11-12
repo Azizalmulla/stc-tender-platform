@@ -247,7 +247,7 @@ class KuwaitAlyomScraper:
     
     def _screenshot_page_with_browserless(self, edition_id: str, page_number: int) -> Optional[bytes]:
         """
-        Screenshot a flipbook page using Browserless.io API
+        Screenshot a flipbook page using Browserless API
         
         Args:
             edition_id: Gazette edition ID
@@ -259,62 +259,55 @@ class KuwaitAlyomScraper:
         import os
         import requests
         
+        browserless_api_key = os.getenv('BROWSERLESS_API_KEY')
+        if not browserless_api_key or browserless_api_key == 'paste-your-browserless-api-key-here':
+            print(f"⚠️  BROWSERLESS_API_KEY not configured, skipping screenshot")
+            return None
+        
         try:
             print(f"📸 Screenshotting page {page_number} with Browserless...")
             
-            browserless_url = f"https://chrome.browserless.io/screenshot"
             flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             
-            # Prepare cookies for Browserless
+            # Browserless screenshot API (updated endpoint)
+            browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}"
+            
+            # Convert session cookies to Browserless format
             cookies = []
             for cookie in self.session.cookies:
                 cookies.append({
-                    'name': cookie.name,
-                    'value': cookie.value,
-                    'domain': cookie.domain or '.kuwaitalyawm.media.gov.kw',
-                    'path': cookie.path or '/'
+                    "name": cookie.name,
+                    "value": cookie.value,
+                    "domain": cookie.domain or ".kuwaitalyawm.media.gov.kw",
+                    "path": cookie.path or "/"
                 })
             
-            # Browserless screenshot payload
             payload = {
-                'url': flip_url,
-                'cookies': cookies,
-                'options': {
-                    'fullPage': True,
-                    'type': 'png'
+                "url": flip_url,
+                "options": {
+                    "fullPage": False,
+                    "type": "png",
+                    "encoding": "binary"
                 },
-                'gotoOptions': {
-                    'waitUntil': 'networkidle2',
-                    'timeout': 30000
+                "gotoOptions": {
+                    "waitUntil": "networkidle2"
                 },
-                'waitForTimeout': 5000  # Wait 5 seconds for flipbook to render
+                "cookies": cookies,  # Pass authenticated session cookies
+                "waitForTimeout": 5000  # Wait 5 seconds for flipbook to render PDF
             }
             
-            # Add API key from environment
-            api_key = os.getenv('BROWSERLESS_API_KEY')
-            if not api_key:
-                print("⚠️  BROWSERLESS_API_KEY not set in environment")
-                return None
+            response = requests.post(browserless_url, json=payload, timeout=30)
             
-            params = {'token': api_key}
-            
-            # Make request to Browserless
-            response = requests.post(
-                browserless_url,
-                params=params,
-                json=payload,
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                screenshot_bytes = response.content
-                print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
-                return screenshot_bytes
-            else:
+            if response.status_code != 200:
                 print(f"❌ Browserless API error: {response.status_code}")
                 print(f"   Response: {response.text[:200]}")
                 return None
-                
+            
+            screenshot_bytes = response.content
+            print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+            
+            return screenshot_bytes
+            
         except Exception as e:
             print(f"❌ Error screenshotting with Browserless: {e}")
             return None

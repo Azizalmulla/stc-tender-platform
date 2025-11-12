@@ -19,6 +19,7 @@ trafilatura==1.6.4
 requests==2.31.0
 httpx==0.26.0
 cloudscraper==1.2.71  # Bypass Cloudflare protection
+# playwright removed - using lightweight cloudscraper instead
 
 # PDF Processing
 PyMuPDF==1.23.22
