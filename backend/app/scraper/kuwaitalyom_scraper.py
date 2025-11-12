@@ -289,11 +289,6 @@ class KuwaitAlyomScraper:
                     "type": "png",
                     "encoding": "binary"
                 },
-                "viewport": {
-                    "width": 1920,   # Higher resolution for better text clarity
-                    "height": 1080,
-                    "deviceScaleFactor": 2  # Retina/2x scaling for sharper text
-                },
                 "gotoOptions": {
                     "waitUntil": "networkidle2"
                 },
