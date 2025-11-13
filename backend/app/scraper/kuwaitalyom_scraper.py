@@ -312,18 +312,18 @@ class KuwaitAlyomScraper:
             print(f"❌ Error screenshotting with Browserless: {e}")
             return None
     
-    def _correct_arabic_text(self, text: str) -> str:
+    def _correct_arabic_text_with_vision(self, text: str, image_bytes: bytes) -> str:
         """
-        Post-process Arabic text to fix common OCR errors
+        Post-process Arabic text using GPT-4o Vision to verify against original image
         
-        Uses camel-tools for orthographic normalization to fix:
-        - Diacritics errors
-        - Similar-shaped letters (ب/ت/ث, ح/خ)
-        - Ligature issues
-        - Common spelling mistakes from OCR
+        Strategy: Give GPT-4o BOTH the OCR text AND the original image
+        - It can see what the text SHOULD say by reading the image
+        - It can compare with OCR output and fix obvious errors
+        - Especially useful for ministry names and key entities
         
         Args:
             text: Raw OCR text from Google Document AI
+            image_bytes: Original screenshot for verification
             
         Returns:
             Corrected Arabic text
@@ -331,28 +331,88 @@ class KuwaitAlyomScraper:
         try:
             from camel_tools.utils.normalize import normalize_unicode, normalize_alef_maksura_ar
             from camel_tools.utils.dediac import dediac_ar
+            from openai import OpenAI
+            import base64
+            import os
             
             if not text or len(text.strip()) == 0:
                 return text
             
-            print(f"  🔧 Applying Arabic text correction...")
+            print(f"  🔧 Stage 1: Basic Arabic normalization...")
             
-            # Step 1: Unicode normalization (fix encoding issues)
+            # Stage 1: Quick normalization
             corrected = normalize_unicode(text)
-            
-            # Step 2: Normalize Alef variants and Ya/Alef Maksura
             corrected = normalize_alef_maksura_ar(corrected)
-            
-            # Step 3: Remove diacritics that cause OCR confusion
-            # Keep the text but remove misread diacritics
             corrected = dediac_ar(corrected)
             
-            print(f"  ✅ Arabic correction applied")
+            print(f"  ✅ Stage 1 complete")
+            
+            # Stage 2: Vision-based verification (only for longer texts)
+            if len(corrected) > 100 and image_bytes:
+                print(f"  👁️  Stage 2: GPT-4o Vision verification...")
+                
+                api_key = os.getenv('OPENAI_API_KEY')
+                if api_key:
+                    try:
+                        client = OpenAI(api_key=api_key)
+                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                        
+                        # Ask GPT-4o to look at BOTH image and text to fix errors
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",  # Cheaper and good enough for this
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": f"""هذا نص مستخرج من الصورة أدناه باستخدام OCR، لكنه يحتوي على أخطاء.
+
+انظر إلى الصورة وقارنها بالنص المستخرج، ثم صحح فقط:
+1. أسماء الوزارات والجهات الحكومية الكويتية (مثل: وزارة الداخلية، وزارة الأشغال، الهيئة العامة)
+2. الكلمات الخاطئة تماماً التي لا معنى لها
+
+احتفظ بباقي النص كما هو. أرجع النص المصحح فقط.
+
+النص المستخرج:
+{corrected[:2000]}"""  # Limit to 2K for cost
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": f"data:image/png;base64,{base64_image}",
+                                                "detail": "low"  # Low detail to save cost
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            temperature=0.1,
+                            max_tokens=2048
+                        )
+                        
+                        vision_corrected = response.choices[0].message.content.strip()
+                        
+                        if vision_corrected and len(vision_corrected) > 50:
+                            corrected = vision_corrected
+                            print(f"  ✅ Stage 2 complete - Vision corrections applied")
+                        else:
+                            print(f"  ⚠️  Stage 2 returned short text, keeping Stage 1")
+                    
+                    except Exception as e:
+                        print(f"  ⚠️  Stage 2 failed: {e}, using Stage 1 output")
+                else:
+                    print(f"  ⏭️  Stage 2 skipped - no API key")
+            else:
+                print(f"  ⏭️  Stage 2 skipped - text too short or no image")
+            
             return corrected
             
         except Exception as e:
-            print(f"  ⚠️  Arabic correction failed: {e}, returning original text")
-            return text  # Return original if correction fails
+            print(f"  ⚠️  Arabic correction failed: {e}, returning original")
+            import traceback
+            print(traceback.format_exc())
+            return text
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[str]:
         """
@@ -445,10 +505,10 @@ class KuwaitAlyomScraper:
                 print(f"  ✅ Google Doc AI extracted {len(text)} characters from image")
                 print(f"  📝 Raw preview: {text[:200]}...")  # Show first 200 chars
                 
-                # Apply Arabic text correction to fix OCR errors
-                corrected_text = self._correct_arabic_text(text)
+                # Apply Arabic text correction with vision verification
+                corrected_text = self._correct_arabic_text_with_vision(text, image_bytes)
                 
-                print(f"  📝 Corrected preview: {corrected_text[:200]}...")
+                print(f"  📝 Final preview: {corrected_text[:200]}...")
                 return corrected_text
             else:
                 print(f"  ⚠️  Google Doc AI returned empty text")
