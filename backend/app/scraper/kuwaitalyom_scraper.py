@@ -361,8 +361,8 @@ class KuwaitAlyomScraper:
                         client = OpenAI(api_key=api_key)
                         base64_image = base64.b64encode(image_bytes).decode('utf-8')
                         
-                        # Prepare OCR text preview (first 2000 chars to save tokens)
-                        ocr_preview = corrected[:2000] if len(corrected) > 2000 else corrected
+                        # Prepare OCR text preview (first 3000 chars - enough to capture ministry)
+                        ocr_preview = corrected[:3000] if len(corrected) > 3000 else corrected
                         
                         # Ask GPT to extract ministry using BOTH OCR text and image
                         # Research shows this is much more accurate than image-only
@@ -392,9 +392,9 @@ class KuwaitAlyomScraper:
 يمكنك استخدام الصورة المرفقة للتأكد من الاسم الصحيح إذا كان النص غير واضح.
 
 أرجع الإجابة بصيغة JSON فقط:
-{
+{{
   "ministry": "اسم الوزارة أو الجهة الحكومية بالكامل"
-}
+}}
 
 إذا لم تجد اسم واضح، أرجع JSON مع ministry كـ null"""
                                         },
