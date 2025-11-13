@@ -139,7 +139,14 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
                         new_deadline = None
                 
                 if existing_by_number and existing_by_number.deadline and new_deadline:
-                    if new_deadline > existing_by_number.deadline:
+                    # Ensure both datetimes are timezone-aware for comparison
+                    from datetime import timezone
+                    existing_deadline = existing_by_number.deadline
+                    if existing_deadline.tzinfo is None:
+                        # Make existing deadline timezone-aware (UTC)
+                        existing_deadline = existing_deadline.replace(tzinfo=timezone.utc)
+                    
+                    if new_deadline > existing_deadline:
                         is_postponed = True
                         original_deadline = existing_by_number.original_deadline or existing_by_number.deadline
                         deadline_history = existing_by_number.deadline_history or []
