@@ -361,7 +361,11 @@ class KuwaitAlyomScraper:
                         client = OpenAI(api_key=api_key)
                         base64_image = base64.b64encode(image_bytes).decode('utf-8')
                         
-                        # Ask GPT to extract ministry directly from image
+                        # Prepare OCR text preview (first 2000 chars to save tokens)
+                        ocr_preview = corrected[:2000] if len(corrected) > 2000 else corrected
+                        
+                        # Ask GPT to extract ministry using BOTH OCR text and image
+                        # Research shows this is much more accurate than image-only
                         response = client.chat.completions.create(
                             model="gpt-4o-mini",
                             messages=[
@@ -370,9 +374,11 @@ class KuwaitAlyomScraper:
                                     "content": [
                                         {
                                             "type": "text",
-                                            "text": """انظر إلى هذه الصورة من الجريدة الرسمية الكويتية.
+                                            "text": f"""هذا نص مستخرج من صفحة الجريدة الرسمية الكويتية باستخدام OCR:
 
-ابحث عن اسم الوزارة أو الجهة الحكومية أو الشركة المعلنة عن المناقصة أو الممارسة.
+{ocr_preview}
+
+ابحث في هذا النص عن اسم الوزارة أو الجهة الحكومية أو الشركة المعلنة عن المناقصة.
 
 أمثلة على الأسماء:
 - وزارة الداخلية
@@ -380,6 +386,10 @@ class KuwaitAlyomScraper:
 - وزارة الصحة
 - الهيئة العامة للصناعة
 - شركة صناعة الكيماويات البترولية
+- شركة نفط الكويت
+- الهيئة العامة للقوى العاملة
+
+يمكنك استخدام الصورة المرفقة للتأكد من الاسم الصحيح إذا كان النص غير واضح.
 
 أرجع الإجابة بصيغة JSON فقط:
 {
@@ -392,7 +402,7 @@ class KuwaitAlyomScraper:
                                             "type": "image_url",
                                             "image_url": {
                                                 "url": f"data:image/png;base64,{base64_image}",
-                                                "detail": "high"  # High detail needed for Arabic OCR
+                                                "detail": "low"  # Low detail is enough since we have OCR text
                                             }
                                         }
                                     ]
