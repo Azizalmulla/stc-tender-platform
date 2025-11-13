@@ -312,7 +312,7 @@ class KuwaitAlyomScraper:
             print(f"❌ Error screenshotting with Browserless: {e}")
             return None
     
-    def _correct_arabic_text_with_vision(self, text: str, image_bytes: bytes) -> str:
+    def _correct_arabic_text_with_vision(self, text: str, image_bytes: bytes) -> tuple[str, str]:
         """
         Post-process Arabic text using GPT-4o Vision to verify against original image
         
@@ -320,13 +320,14 @@ class KuwaitAlyomScraper:
         - It can see what the text SHOULD say by reading the image
         - It can compare with OCR output and fix obvious errors
         - Especially useful for ministry names and key entities
+        - ALSO extracts the ministry/organization name directly from image
         
         Args:
             text: Raw OCR text from Google Document AI
             image_bytes: Original screenshot for verification
             
         Returns:
-            Corrected Arabic text
+            Tuple of (corrected_text, ministry_name)
         """
         try:
             from camel_tools.utils.normalize import normalize_unicode, normalize_alef_maksura_ar
@@ -334,9 +335,10 @@ class KuwaitAlyomScraper:
             from openai import OpenAI
             import base64
             import os
+            import json
             
             if not text or len(text.strip()) == 0:
-                return text
+                return text, None
             
             print(f"  🔧 Stage 1: Basic Arabic normalization...")
             
@@ -347,9 +349,11 @@ class KuwaitAlyomScraper:
             
             print(f"  ✅ Stage 1 complete")
             
-            # Stage 2: Vision-based verification (only for longer texts)
+            ministry = None
+            
+            # Stage 2: Vision-based ministry extraction (only for longer texts)
             if len(corrected) > 100 and image_bytes:
-                print(f"  👁️  Stage 2: GPT-4o Vision verification...")
+                print(f"  👁️  Stage 2: GPT-4o-mini Vision - Extract ministry from image...")
                 
                 api_key = os.getenv('OPENAI_API_KEY')
                 if api_key:
@@ -357,25 +361,32 @@ class KuwaitAlyomScraper:
                         client = OpenAI(api_key=api_key)
                         base64_image = base64.b64encode(image_bytes).decode('utf-8')
                         
-                        # Ask GPT-4o to look at BOTH image and text to fix errors
+                        # Ask GPT to extract ministry directly from image
                         response = client.chat.completions.create(
-                            model="gpt-4o-mini",  # Cheaper and good enough for this
+                            model="gpt-4o-mini",
                             messages=[
                                 {
                                     "role": "user",
                                     "content": [
                                         {
                                             "type": "text",
-                                            "text": f"""هذا نص مستخرج من الصورة أدناه باستخدام OCR، لكنه يحتوي على أخطاء.
+                                            "text": """انظر إلى هذه الصورة من الجريدة الرسمية الكويتية.
 
-انظر إلى الصورة وقارنها بالنص المستخرج، ثم صحح فقط:
-1. أسماء الوزارات والجهات الحكومية الكويتية (مثل: وزارة الداخلية، وزارة الأشغال، الهيئة العامة)
-2. الكلمات الخاطئة تماماً التي لا معنى لها
+ابحث عن اسم الوزارة أو الجهة الحكومية أو الشركة المعلنة عن المناقصة أو الممارسة.
 
-احتفظ بباقي النص كما هو. أرجع النص المصحح فقط.
+أمثلة على الأسماء:
+- وزارة الداخلية
+- وزارة الأشغال العامة
+- وزارة الصحة
+- الهيئة العامة للصناعة
+- شركة صناعة الكيماويات البترولية
 
-النص المستخرج:
-{corrected[:2000]}"""  # Limit to 2K for cost
+أرجع فقط:
+{
+  "ministry": "اسم الوزارة أو الجهة الحكومية بالكامل"
+}
+
+إذا لم تجد اسم واضح، أرجع null"""
                                         },
                                         {
                                             "type": "image_url",
@@ -388,41 +399,43 @@ class KuwaitAlyomScraper:
                                 }
                             ],
                             temperature=0.1,
-                            max_tokens=2048
+                            max_tokens=200,
+                            response_format={"type": "json_object"}
                         )
                         
-                        vision_corrected = response.choices[0].message.content.strip()
+                        vision_result = response.choices[0].message.content.strip()
+                        result_json = json.loads(vision_result)
+                        ministry = result_json.get('ministry')
                         
-                        if vision_corrected and len(vision_corrected) > 50:
-                            corrected = vision_corrected
-                            print(f"  ✅ Stage 2 complete - Vision corrections applied")
+                        if ministry:
+                            print(f"  ✅ Stage 2 complete - Ministry extracted: {ministry}")
                         else:
-                            print(f"  ⚠️  Stage 2 returned short text, keeping Stage 1")
+                            print(f"  ⚠️  Stage 2 - No ministry found in image")
                     
                     except Exception as e:
-                        print(f"  ⚠️  Stage 2 failed: {e}, using Stage 1 output")
+                        print(f"  ⚠️  Stage 2 failed: {e}, ministry will be None")
                 else:
                     print(f"  ⏭️  Stage 2 skipped - no API key")
             else:
                 print(f"  ⏭️  Stage 2 skipped - text too short or no image")
             
-            return corrected
+            return corrected, ministry
             
         except Exception as e:
             print(f"  ⚠️  Arabic correction failed: {e}, returning original")
             import traceback
             print(traceback.format_exc())
-            return text
+            return text, None
     
-    def _extract_text_from_image(self, image_bytes: bytes) -> Optional[str]:
+    def _extract_text_from_image(self, image_bytes: bytes) -> Optional[dict]:
         """
-        Extract text from image using Google Document AI
+        Extract text from image using Google Document AI and Vision
         
         Args:
             image_bytes: Image bytes (PNG/JPEG)
             
         Returns:
-            Extracted text if successful, None otherwise
+            Dict with {'text': str, 'ministry': str} if successful, None otherwise
         """
         try:
             from google.cloud import documentai_v1 as documentai
@@ -505,11 +518,11 @@ class KuwaitAlyomScraper:
                 print(f"  ✅ Google Doc AI extracted {len(text)} characters from image")
                 print(f"  📝 Raw preview: {text[:200]}...")  # Show first 200 chars
                 
-                # Apply Arabic text correction with vision verification
-                corrected_text = self._correct_arabic_text_with_vision(text, image_bytes)
+                # Apply Arabic text correction with Vision-based ministry extraction
+                corrected_text, ministry = self._correct_arabic_text_with_vision(text, image_bytes)
                 
-                print(f"  📝 Final preview: {corrected_text[:200]}...")
-                return corrected_text
+                print(f"  📝 Corrected preview: {corrected_text[:200]}...")
+                return {'text': corrected_text, 'ministry': ministry}
             else:
                 print(f"  ⚠️  Google Doc AI returned empty text")
                 return None
@@ -689,7 +702,7 @@ class KuwaitAlyomScraper:
             print(traceback.format_exc())
             return None
     
-    def extract_pdf_text(self, edition_id: str, page_number: int) -> Optional[str]:
+    def extract_pdf_text(self, edition_id: str, page_number: int) -> Optional[dict]:
         """
         Extract text from a specific page in the Kuwait Alyom gazette
         
@@ -701,7 +714,7 @@ class KuwaitAlyomScraper:
             page_number: Page number in the edition
             
         Returns:
-            Extracted text if successful, None otherwise
+            Dict with {'text': str, 'ministry': str} if successful, None otherwise
         """
         try:
             print(f"📄 Extracting text from page: Edition {edition_id}, Page {page_number}")
@@ -710,14 +723,14 @@ class KuwaitAlyomScraper:
             screenshot_bytes = self._screenshot_page_with_browserless(edition_id, page_number)
             if screenshot_bytes:
                 print(f"🖼️  Using screenshot-based extraction...")
-                text = self._extract_text_from_image(screenshot_bytes)
-                if text and len(text) > 50:
-                    print(f"✅ Extracted {len(text)} characters from screenshot")
-                    return text
+                result = self._extract_text_from_image(screenshot_bytes)
+                if result and result.get('text') and len(result['text']) > 50:
+                    print(f"✅ Extracted {len(result['text'])} characters from screenshot")
+                    return result
                 else:
                     print(f"⚠️  Screenshot extraction returned minimal text, trying PDF fallback...")
             
-            # Method 2: Fallback to PDF extraction
+            # Method 2: Fallback to PDF extraction (no Vision ministry extraction in this path)
             print(f"📄 Falling back to PDF extraction...")
             magazine_pdf = self._download_magazine_pdf(edition_id)
             if not magazine_pdf:
@@ -731,7 +744,7 @@ class KuwaitAlyomScraper:
             
             if text and len(text) > 50:
                 print(f"✅ Extracted {len(text)} characters from PDF")
-                return text
+                return {'text': text, 'ministry': None}  # No Vision in PDF fallback
             else:
                 print(f"⚠️  PDF extraction returned minimal text")
                 return None
@@ -855,16 +868,26 @@ class KuwaitAlyomScraper:
             # Optionally extract PDF and parse with OCR
             if extract_pdf and edition_id and page_number:
                 print(f"🔍 Extracting PDF content for {title}...")
-                pdf_text = self.extract_pdf_text(edition_id, page_number)
+                pdf_result = self.extract_pdf_text(edition_id, page_number)
                 
-                if pdf_text:
-                    # Parse OCR text to extract details
+                if pdf_result:
+                    pdf_text = pdf_result.get('text')
+                    vision_ministry = pdf_result.get('ministry')
+                    
+                    # Use Vision-extracted ministry if available
+                    if vision_ministry:
+                        ministry = vision_ministry
+                        print(f"✅ Extracted details - Ministry: {ministry} (from Vision)")
+                    else:
+                        # Fallback to regex parsing if Vision didn't find ministry
+                        ocr_data = self.parse_ocr_text(pdf_text)
+                        ministry = ocr_data.get('ministry')
+                        print(f"✅ Extracted details - Ministry: {ministry} (from regex)")
+                    
+                    # Extract description from text
                     ocr_data = self.parse_ocr_text(pdf_text)
-                    ministry = ocr_data.get('ministry')
                     if ocr_data.get('description'):
                         description = ocr_data.get('description')
-                    
-                    print(f"✅ Extracted details - Ministry: {ministry}")
             
             # Generate content hash for deduplication
             content = f"KA-{tender_id}|{title}|{edition_no}"
