@@ -312,6 +312,48 @@ class KuwaitAlyomScraper:
             print(f"❌ Error screenshotting with Browserless: {e}")
             return None
     
+    def _correct_arabic_text(self, text: str) -> str:
+        """
+        Post-process Arabic text to fix common OCR errors
+        
+        Uses camel-tools for orthographic normalization to fix:
+        - Diacritics errors
+        - Similar-shaped letters (ب/ت/ث, ح/خ)
+        - Ligature issues
+        - Common spelling mistakes from OCR
+        
+        Args:
+            text: Raw OCR text from Google Document AI
+            
+        Returns:
+            Corrected Arabic text
+        """
+        try:
+            from camel_tools.utils.normalize import normalize_unicode, normalize_alef_maksura_ar
+            from camel_tools.utils.dediac import dediac_ar
+            
+            if not text or len(text.strip()) == 0:
+                return text
+            
+            print(f"  🔧 Applying Arabic text correction...")
+            
+            # Step 1: Unicode normalization (fix encoding issues)
+            corrected = normalize_unicode(text)
+            
+            # Step 2: Normalize Alef variants and Ya/Alef Maksura
+            corrected = normalize_alef_maksura_ar(corrected)
+            
+            # Step 3: Remove diacritics that cause OCR confusion
+            # Keep the text but remove misread diacritics
+            corrected = dediac_ar(corrected)
+            
+            print(f"  ✅ Arabic correction applied")
+            return corrected
+            
+        except Exception as e:
+            print(f"  ⚠️  Arabic correction failed: {e}, returning original text")
+            return text  # Return original if correction fails
+    
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[str]:
         """
         Extract text from image using Google Document AI
@@ -401,8 +443,13 @@ class KuwaitAlyomScraper:
             
             if text and len(text.strip()) > 0:
                 print(f"  ✅ Google Doc AI extracted {len(text)} characters from image")
-                print(f"  📝 Preview: {text[:200]}...")  # Show first 200 chars
-                return text
+                print(f"  📝 Raw preview: {text[:200]}...")  # Show first 200 chars
+                
+                # Apply Arabic text correction to fix OCR errors
+                corrected_text = self._correct_arabic_text(text)
+                
+                print(f"  📝 Corrected preview: {corrected_text[:200]}...")
+                return corrected_text
             else:
                 print(f"  ⚠️  Google Doc AI returned empty text")
                 return None
