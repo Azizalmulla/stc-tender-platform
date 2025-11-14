@@ -429,54 +429,42 @@ class KuwaitAlyomScraper:
             else:
                 print(f"  ⏭️  Stage 2 skipped - text too short or no image")
             
-            # Stage 3: Vision-based full text correction (remove gibberish, fix OCR errors)
+            # Stage 3: Text-based OCR correction (no image to avoid Vision refusals)
             corrected_full = corrected  # Default to Stage 1 output
             
-            if len(corrected) > 100 and image_bytes:
-                print(f"  👁️  Stage 3: GPT-4o-mini Vision - Correct full OCR text...")
+            if len(corrected) > 100:
+                print(f"  � Stage 3: GPT-4o-mini - Correct OCR errors (text-only)...")
                 
                 api_key = os.getenv('OPENAI_API_KEY')
                 if api_key:
                     try:
                         client = OpenAI(api_key=api_key)
-                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
                         
                         # Send full text (up to 9000 chars to stay within limits)
                         ocr_text_for_correction = corrected[:9000] if len(corrected) > 9000 else corrected
                         
-                        # Ask Vision to correct OCR errors using text + image
+                        # Ask GPT to correct OCR errors using context (no image)
                         response = client.chat.completions.create(
                             model="gpt-4o-mini",
                             messages=[
                                 {
                                     "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": f"""This is OCR-extracted text from a Kuwait official gazette tender page. It contains OCR errors, especially in English company names and mixed Arabic-English sections.
+                                    "content": f"""This is OCR-extracted text from a Kuwait official gazette tender page. It contains OCR errors, especially in English company names and mixed Arabic-English sections.
 
 OCR Text:
 {ocr_text_for_correction}
 
 Your task:
-1. Correct all OCR errors (Arabic and English)
-2. Fix garbled English text like "PMUTTALETION" → "INSTALLATION", "SMCILITTLS" → "FACILITIES"
-3. Fix Arabic OCR errors like "الأحماد" → "الأحد"
-4. Remove any pure gibberish blocks that have no meaning
+1. Correct all OCR errors (Arabic and English) using context
+2. Fix garbled English text like "PMUTTALETION" → "INSTALLATION", "SMCILITTLS" → "FACILITIES", "COILS" → "SERVICES"
+3. Fix Arabic OCR errors like "الأحماد" → "الأحد", "جمادي الأولي" → "جمادى الأولى"
+4. Remove obvious gibberish blocks that have no meaning
 5. Keep the structure and formatting
 6. DO NOT change meaning, dates, numbers, or legal terms
 7. DO NOT add new information
+8. Use surrounding context to determine correct words
 
 Return ONLY the corrected text, nothing else."""
-                                        },
-                                        {
-                                            "type": "image_url",
-                                            "image_url": {
-                                                "url": f"data:image/png;base64,{base64_image}",
-                                                "detail": "low"
-                                            }
-                                        }
-                                    ]
                                 }
                             ],
                             temperature=0.1,
@@ -492,7 +480,7 @@ Return ONLY the corrected text, nothing else."""
                 else:
                     print(f"  ⏭️  Stage 3 skipped - no API key")
             else:
-                print(f"  ⏭️  Stage 3 skipped - text too short or no image")
+                print(f"  ⏭️  Stage 3 skipped - text too short")
             
             # Stage 4: Structure the corrected text into clear sections
             structured_text = corrected_full  # Default to Stage 3 output
@@ -761,6 +749,11 @@ Return the well-structured Arabic text."""
             import base64
             try:
                 print(f"🔓 Attempting urlsafe_b64decode...")
+                # Add padding if needed (base64 requires length to be multiple of 4)
+                missing_padding = len(base64_data) % 4
+                if missing_padding:
+                    base64_data += '=' * (4 - missing_padding)
+                    print(f"   - Added {4 - missing_padding} padding characters")
                 pdf_bytes = base64.urlsafe_b64decode(base64_data)
                 print(f"✅ Decoded successfully!")
                 print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
