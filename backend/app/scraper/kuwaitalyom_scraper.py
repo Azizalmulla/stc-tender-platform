@@ -11,6 +11,8 @@ from typing import List, Dict, Optional
 import logging
 from app.core.config import settings
 from app.parser.pdf_extractor import PDFExtractor
+from PIL import Image, ImageEnhance, ImageFilter
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -312,15 +314,63 @@ class KuwaitAlyomScraper:
             print(f"❌ Error screenshotting with Browserless: {e}")
             return None
     
+    def _preprocess_image(self, image_bytes: bytes) -> bytes:
+        """
+        Preprocess image to improve OCR quality
+        
+        Applies:
+        - Contrast enhancement
+        - Sharpening
+        - Noise reduction
+        
+        Args:
+            image_bytes: Original image bytes
+            
+        Returns:
+            Enhanced image bytes
+        """
+        try:
+            print(f"  🎨 Preprocessing image for better OCR...")
+            
+            # Open image
+            img = Image.open(BytesIO(image_bytes))
+            
+            # Convert to RGB if needed
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Increase contrast (helps with faded scans)
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(1.5)
+            
+            # Sharpen (improves edge definition)
+            img = img.filter(ImageFilter.SHARPEN)
+            
+            # Denoise (removes artifacts)
+            img = img.filter(ImageFilter.MedianFilter(size=3))
+            
+            # Save back to bytes with high quality
+            output = BytesIO()
+            img.save(output, format='JPEG', quality=95)
+            enhanced_bytes = output.getvalue()
+            
+            print(f"  ✅ Image preprocessed ({len(image_bytes)/1024:.1f}KB → {len(enhanced_bytes)/1024:.1f}KB)")
+            
+            return enhanced_bytes
+            
+        except Exception as e:
+            print(f"  ⚠️  Image preprocessing failed: {e}, using original image")
+            return image_bytes
+    
     def _correct_arabic_text_with_vision(self, text: str, image_bytes: bytes) -> tuple[str, str]:
         """
         Post-process Arabic text using GPT-4o Vision to verify against original image
         
-        Strategy: Give GPT-4o BOTH the OCR text AND the original image
-        - It can see what the text SHOULD say by reading the image
-        - It can compare with OCR output and fix obvious errors
-        - Especially useful for ministry names and key entities
-        - ALSO extracts the ministry/organization name directly from image
+        Enhanced 3-Stage Pipeline:
+        Stage 1: Basic Arabic normalization
+        Stage 2: Ministry extraction with Vision
+        Stage 3: GPT-4o VISION correction (reads image + OCR text together)
+        Stage 4: Text structuring
         
         Args:
             text: Raw OCR text from Google Document AI
@@ -429,50 +479,67 @@ class KuwaitAlyomScraper:
             else:
                 print(f"  ⏭️  Stage 2 skipped - text too short or no image")
             
-            # Stage 3: Text-based OCR correction (no image to avoid Vision refusals)
+            # Stage 3: GPT-4o VISION correction (image + OCR text together)
             corrected_full = corrected  # Default to Stage 1 output
             
-            if len(corrected) > 100:
-                print(f"  � Stage 3: GPT-4o-mini - Correct OCR errors (text-only)...")
+            if len(corrected) > 100 and image_bytes:
+                print(f"  👁️  Stage 3: GPT-4o Vision - Correct severe OCR errors by reading image...")
                 
                 api_key = os.getenv('OPENAI_API_KEY')
                 if api_key:
                     try:
                         client = OpenAI(api_key=api_key)
+                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
                         
-                        # Send full text (up to 9000 chars to stay within limits)
-                        ocr_text_for_correction = corrected[:9000] if len(corrected) > 9000 else corrected
+                        # Send OCR text (up to 2000 chars as reference)
+                        ocr_text_for_correction = corrected[:2000] if len(corrected) > 2000 else corrected
                         
-                        # Ask GPT to correct OCR errors using context (no image)
+                        # Ask GPT-4o Vision to read image and correct OCR
                         response = client.chat.completions.create(
-                            model="gpt-4o-mini",
+                            model="gpt-4o",  # Full model for best Vision quality
                             messages=[
                                 {
                                     "role": "user",
-                                    "content": f"""This is OCR-extracted text from a Kuwait official gazette tender page. It contains OCR errors, especially in English company names and mixed Arabic-English sections.
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": f"""You are correcting SEVERELY damaged OCR output from Kuwait government tender documents.
 
-OCR Text:
+DAMAGED OCR OUTPUT (contains severe errors and gibberish):
 {ocr_text_for_correction}
 
-Your task:
-1. Correct all OCR errors (Arabic and English) using context
-2. Fix garbled English text like "PMUTTALETION" → "INSTALLATION", "SMCILITTLS" → "FACILITIES", "COILS" → "SERVICES"
-3. Fix Arabic OCR errors like "الأحماد" → "الأحد", "جمادي الأولي" → "جمادى الأولى"
-4. Remove obvious gibberish blocks that have no meaning
-5. Keep the structure and formatting
-6. DO NOT change meaning, dates, numbers, or legal terms
-7. DO NOT add new information
-8. Use surrounding context to determine correct words
+YOUR TASK:
+1. Look at the actual image below and READ the Arabic text directly
+2. The OCR has SEVERE errors:
+   - Random English gibberish like "PEUGEMAA, LUSTRINIMAS LIBE GENGIVE"
+   - Wrong Arabic letters and words
+   - Mixed garbage characters
+3. IGNORE the OCR output when it's complete nonsense
+4. TRUST THE IMAGE - read what you actually see
+5. Output clean, properly formatted Arabic text
+6. Preserve document structure (sections, paragraphs)
+7. This is official Kuwait government documentation for public procurement
 
-Return ONLY the corrected text, nothing else."""
+CRITICAL: If you see nonsensical English letters or gibberish, ignore them completely and read from the image.
+
+OUTPUT: Clean Arabic text only, no explanations."""
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": f"data:image/png;base64,{base64_image}",
+                                                "detail": "high"  # High detail for accurate reading
+                                            }
+                                        }
+                                    ]
                                 }
                             ],
                             temperature=0.1,
-                            max_tokens=3000
+                            max_tokens=4000
                         )
                         
                         corrected_full = response.choices[0].message.content.strip()
-                        print(f"  ✅ Stage 3 complete - Text corrected ({len(corrected_full)} chars)")
+                        print(f"  ✅ Stage 3 complete - Text corrected by Vision ({len(corrected_full)} chars)")
                     
                     except Exception as e:
                         print(f"  ⚠️  Stage 3 failed: {e}, using Stage 1 output")
@@ -480,7 +547,7 @@ Return ONLY the corrected text, nothing else."""
                 else:
                     print(f"  ⏭️  Stage 3 skipped - no API key")
             else:
-                print(f"  ⏭️  Stage 3 skipped - text too short")
+                print(f"  ⏭️  Stage 3 skipped - text too short or no image")
             
             # Stage 4: Structure the corrected text into clear sections
             structured_text = corrected_full  # Default to Stage 3 output
@@ -601,9 +668,12 @@ Return the well-structured Arabic text."""
                 client_options=opts
             )
             
-            # Create document object for image
+            # Preprocess image to improve OCR quality (Stage 0)
+            enhanced_image_bytes = self._preprocess_image(image_bytes)
+            
+            # Create document object for enhanced image
             raw_document = documentai.RawDocument(
-                content=image_bytes,
+                content=enhanced_image_bytes,
                 mime_type="image/png"
             )
             
