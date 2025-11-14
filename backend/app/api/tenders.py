@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, or_, func
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.db.session import get_db
 from app.models.tender import Tender
 from pydantic import BaseModel
@@ -134,13 +134,15 @@ async def get_tender_stats(db: Session = Depends(get_db)):
     ).filter(Tender.ministry.isnot(None)).group_by(Tender.ministry).limit(10).all()
     
     # Recent tenders (last 7 days)
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+    # Use timezone-aware datetime to prevent comparison errors
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
     recent_count = db.query(Tender).filter(
         Tender.published_at >= seven_days_ago
     ).count()
     
     # Upcoming deadlines
-    now = datetime.utcnow()
+    # Use timezone-aware datetime to prevent comparison errors
+    now = datetime.now(timezone.utc)
     upcoming_deadlines = db.query(Tender).filter(
         and_(
             Tender.deadline.isnot(None),

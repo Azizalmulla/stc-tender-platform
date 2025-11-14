@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from pydantic import BaseModel
 from app.db.session import get_db
@@ -45,7 +45,8 @@ async def get_notifications(
     - New: Tenders published in last 7 days
     - Deadlines: Tenders with deadlines in next 14 days
     """
-    now = datetime.utcnow()
+    # Use timezone-aware datetime to prevent comparison errors
+    now = datetime.now(timezone.utc)
     seven_days_ago = now - timedelta(days=7)
     fourteen_days_ahead = now + timedelta(days=14)
     
@@ -177,7 +178,8 @@ async def get_new_notifications(
     db: Session = Depends(get_db)
 ):
     """Get new tenders from last N days"""
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    # Use timezone-aware datetime to prevent comparison errors
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
     
     tenders = db.query(Tender).filter(
         Tender.published_at >= cutoff_date
@@ -207,7 +209,8 @@ async def get_deadline_notifications(
     db: Session = Depends(get_db)
 ):
     """Get tenders with deadlines in next N days"""
-    now = datetime.utcnow()
+    # Use timezone-aware datetime to prevent comparison errors
+    now = datetime.now(timezone.utc)
     future_date = now + timedelta(days=days)
     
     tenders = db.query(Tender).filter(

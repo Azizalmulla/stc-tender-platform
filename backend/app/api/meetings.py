@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from pydantic import BaseModel
 from app.db.session import get_db
@@ -45,7 +45,8 @@ async def get_meetings(
     - **limit**: Maximum number of meetings to return
     - **upcoming_only**: If true, only return future meetings
     """
-    now = datetime.utcnow()
+    # Use timezone-aware datetime to prevent comparison errors
+    now = datetime.now(timezone.utc)
     
     # Base query - tenders with meeting info
     base_query = db.query(Tender).filter(
@@ -103,7 +104,8 @@ async def get_upcoming_meetings(
     db: Session = Depends(get_db)
 ):
     """Get upcoming meetings in next N days"""
-    now = datetime.utcnow()
+    # Use timezone-aware datetime to prevent comparison errors
+    now = datetime.now(timezone.utc)
     future_date = now + timedelta(days=days)
     
     meetings = db.query(Tender).filter(
