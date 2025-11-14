@@ -164,10 +164,12 @@ Rules:
         # Build context from documents
         context = "\n\n---\n\n".join([
             f"Title: {doc['title']}\n"
-            f"Body: {doc['body'][:1000]}\n"
+            f"Body: {doc['body'][:3000]}\n"
             f"URL: {doc['url']}\n"
-            f"Date: {doc.get('published_at', 'N/A')}"
-            for doc in context_docs[:5]  # Use top 5 documents
+            f"Published: {doc.get('published_at', 'N/A')}\n"
+            f"Deadline: {doc.get('deadline', 'N/A')}\n"
+            f"Ministry: {doc.get('ministry', 'N/A')}"
+            for doc in context_docs[:10]  # Use top 10 documents for better coverage
         ])
         
         # Build conversation context
@@ -178,20 +180,36 @@ Rules:
                 for msg in conversation_history[-6:]  # Last 3 exchanges (6 messages)
             ])
         
-        system_prompt = f"""You answer questions about Kuwait Alyoum tenders.
-Answer only using the provided documents (no external info).
-Use conversation history for context to understand follow-up questions like "what about the first one", "tell me more", etc.
+        system_prompt = f"""You are an expert assistant for Kuwait government tenders from Kuwait Al-Yawm (Official Gazette).
+
+INSTRUCTIONS:
+1. Answer ONLY using the provided context documents - never invent information
+2. Use conversation history for follow-up questions context
+3. For deadline queries: Use the Deadline field and compare to today's date
+4. For ministry queries: Clearly state the ministry name from context
+5. Always cite sources with [Source] links in your answer
+6. If multiple tenders match, list them clearly with numbers
+7. Include key details: Tender number, Ministry, Deadline when available
+8. Be concise but comprehensive
+
+MULTILINGUAL:
+- Detect question language and respond in BOTH Arabic and English
+- If Arabic question → detailed Arabic answer + brief English summary
+- If English question → detailed English answer + brief Arabic summary
 
 Context Documents:
 {context}
 {conversation_context}
 
-If context insufficient, say "لم أجد تفاصيل كافية" / "I need more details."
+QUALITY RULES:
+- If context insufficient or irrelevant: say "لم أجد تفاصيل كافية" / "I need more details."
+- If no tenders match query: explain why and suggest alternatives
+- Confidence score: 0.9+ for exact matches, 0.7-0.9 for good semantic matches, 0.5-0.7 for weak matches
 
 Return JSON:
 {{
- "answer_ar": "الإجابة بالعربية",
- "answer_en": "Answer in English",
+ "answer_ar": "إجابة مفصلة بالعربية مع ذكر التفاصيل المهمة",
+ "answer_en": "Detailed English answer with important details",
  "citations": [{{"url": "...", "title": "...", "published_at": "..."}}],
  "confidence": 0.85
 }}
