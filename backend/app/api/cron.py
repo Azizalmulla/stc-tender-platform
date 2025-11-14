@@ -1,7 +1,7 @@
 """
 Cron job endpoints for scheduled tasks
 """
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from datetime import datetime
 import asyncio
 from typing import Optional
@@ -16,17 +16,11 @@ from app.parser.pdf_parser import TextNormalizer
 router = APIRouter(prefix="/cron", tags=["cron"])
 
 
-@router.post("/scrape-weekly")
-async def scrape_weekly(authorization: Optional[str] = Header(None)):
+def run_scrape_task():
     """
-    Weekly tender scraping job - runs every Sunday
-    Protected by authorization header for security
+    Background task to run the scrape without blocking HTTP requests.
+    This function runs in a separate thread/process.
     """
-    # Simple auth check (use env var for cron secret)
-    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
-    if cron_secret and authorization != f"Bearer {cron_secret}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    
     try:
         print(f"🤖 Starting weekly scrape from Kuwait Al-Yawm (Official Gazette) at {datetime.now()}")
         
@@ -213,11 +207,35 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
         }
         
         print(f"✅ Weekly scrape completed: {result}")
-        return result
         
     except Exception as e:
         print(f"❌ Error in weekly scrape: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Don't raise HTTPException in background task - just log it
+
+
+@router.post("/scrape-weekly")
+async def scrape_weekly(
+    background_tasks: BackgroundTasks,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Weekly tender scraping job - runs every Sunday
+    Protected by authorization header for security
+    Returns immediately while scrape runs in background
+    """
+    # Simple auth check (use env var for cron secret)
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    # Queue the scrape task to run in background
+    background_tasks.add_task(run_scrape_task)
+    
+    return {
+        "status": "scrape_started",
+        "message": "Scraping task started in background. Check logs for progress.",
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 @router.post("/clear-database")
