@@ -22,11 +22,10 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
     Weekly tender scraping job - runs every Sunday
     Protected by authorization header for security
     """
-    # Temporarily allow without auth for initial setup
     # Simple auth check (use env var for cron secret)
-    # cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
-    # if cron_secret and authorization != f"Bearer {cron_secret}":
-    #     raise HTTPException(status_code=401, detail="Unauthorized")
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
         print(f"🤖 Starting weekly scrape from Kuwait Al-Yawm (Official Gazette) at {datetime.now()}")
@@ -227,10 +226,10 @@ async def clear_database(authorization: Optional[str] = Header(None)):
     Clear all tenders and embeddings from database
     USE WITH CAUTION - This deletes all data!
     """
-    # Temporarily allow without auth for initial setup
-    # cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
-    # if cron_secret and authorization != f"Bearer {cron_secret}":
-    #     raise HTTPException(status_code=401, detail="Unauthorized")
+    # Simple auth check (use env var for cron secret)
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
     
     try:
         db = SessionLocal()
