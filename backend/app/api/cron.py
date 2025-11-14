@@ -220,6 +220,45 @@ async def scrape_weekly(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/clear-database")
+async def clear_database(authorization: Optional[str] = Header(None)):
+    """
+    Clear all tenders and embeddings from database
+    USE WITH CAUTION - This deletes all data!
+    """
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        db = SessionLocal()
+        
+        # Delete all embeddings first (foreign key constraint)
+        embedding_count = db.query(TenderEmbedding).count()
+        db.query(TenderEmbedding).delete()
+        
+        # Delete all tenders
+        tender_count = db.query(Tender).count()
+        db.query(Tender).delete()
+        
+        db.commit()
+        db.close()
+        
+        result = {
+            "status": "success",
+            "deleted_tenders": tender_count,
+            "deleted_embeddings": embedding_count,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        print(f"🗑️  Database cleared: {result}")
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error clearing database: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/check-postponements")
 async def check_postponements(authorization: Optional[str] = Header(None)):
     """
