@@ -429,7 +429,126 @@ class KuwaitAlyomScraper:
             else:
                 print(f"  ⏭️  Stage 2 skipped - text too short or no image")
             
-            return corrected, ministry
+            # Stage 3: Vision-based full text correction (remove gibberish, fix OCR errors)
+            corrected_full = corrected  # Default to Stage 1 output
+            
+            if len(corrected) > 100 and image_bytes:
+                print(f"  👁️  Stage 3: GPT-4o-mini Vision - Correct full OCR text...")
+                
+                api_key = os.getenv('OPENAI_API_KEY')
+                if api_key:
+                    try:
+                        client = OpenAI(api_key=api_key)
+                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                        
+                        # Send full text (up to 9000 chars to stay within limits)
+                        ocr_text_for_correction = corrected[:9000] if len(corrected) > 9000 else corrected
+                        
+                        # Ask Vision to correct OCR errors using text + image
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "text",
+                                            "text": f"""This is OCR-extracted text from a Kuwait official gazette tender page. It contains OCR errors, especially in English company names and mixed Arabic-English sections.
+
+OCR Text:
+{ocr_text_for_correction}
+
+Your task:
+1. Correct all OCR errors (Arabic and English)
+2. Fix garbled English text like "PMUTTALETION" → "INSTALLATION", "SMCILITTLS" → "FACILITIES"
+3. Fix Arabic OCR errors like "الأحماد" → "الأحد"
+4. Remove any pure gibberish blocks that have no meaning
+5. Keep the structure and formatting
+6. DO NOT change meaning, dates, numbers, or legal terms
+7. DO NOT add new information
+
+Return ONLY the corrected text, nothing else."""
+                                        },
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {
+                                                "url": f"data:image/png;base64,{base64_image}",
+                                                "detail": "low"
+                                            }
+                                        }
+                                    ]
+                                }
+                            ],
+                            temperature=0.1,
+                            max_tokens=3000
+                        )
+                        
+                        corrected_full = response.choices[0].message.content.strip()
+                        print(f"  ✅ Stage 3 complete - Text corrected ({len(corrected_full)} chars)")
+                    
+                    except Exception as e:
+                        print(f"  ⚠️  Stage 3 failed: {e}, using Stage 1 output")
+                        corrected_full = corrected
+                else:
+                    print(f"  ⏭️  Stage 3 skipped - no API key")
+            else:
+                print(f"  ⏭️  Stage 3 skipped - text too short or no image")
+            
+            # Stage 4: Structure the corrected text into clear sections
+            structured_text = corrected_full  # Default to Stage 3 output
+            
+            if len(corrected_full) > 200:
+                print(f"  📝 Stage 4: Structuring text into clear sections...")
+                
+                api_key = os.getenv('OPENAI_API_KEY')
+                if api_key:
+                    try:
+                        client = OpenAI(api_key=api_key)
+                        
+                        # Ask GPT to structure the text
+                        response = client.chat.completions.create(
+                            model="gpt-4o-mini",
+                            messages=[
+                                {
+                                    "role": "user",
+                                    "content": f"""This is corrected tender text from Kuwait official gazette. Organize it into clear sections with Arabic headers.
+
+Text:
+{corrected_full[:8000]}
+
+Your task:
+1. Identify and extract key sections
+2. Add clear Arabic section headers like:
+   - === معلومات المناقصة === (Tender Info)
+   - === تفاصيل المناقصة === (Details)
+   - === الشروط والمتطلبات === (Requirements)
+   - === معلومات الاتصال === (Contact Info)
+   - === المواعيد المهمة === (Important Dates)
+3. Remove duplicate headers and page numbers
+4. Keep all important information
+5. Format cleanly with proper spacing
+6. DO NOT add information that wasn't in the original
+7. If text is too short or unclear, return it as-is
+
+Return the well-structured Arabic text."""
+                                }
+                            ],
+                            temperature=0.2,
+                            max_tokens=3000
+                        )
+                        
+                        structured_text = response.choices[0].message.content.strip()
+                        print(f"  ✅ Stage 4 complete - Text structured ({len(structured_text)} chars)")
+                    
+                    except Exception as e:
+                        print(f"  ⚠️  Stage 4 failed: {e}, using Stage 3 output")
+                        structured_text = corrected_full
+                else:
+                    print(f"  ⏭️  Stage 4 skipped - no API key")
+            else:
+                print(f"  ⏭️  Stage 4 skipped - text too short")
+            
+            return structured_text, ministry
             
         except Exception as e:
             print(f"  ⚠️  Arabic correction failed: {e}, returning original")

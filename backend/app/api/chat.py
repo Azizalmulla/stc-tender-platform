@@ -109,10 +109,14 @@ async def ask_question(
     ).join(
         TenderEmbedding, Tender.id == TenderEmbedding.tender_id
     ).filter(
-        TenderEmbedding.embedding.cosine_distance(question_embedding) < 0.4
+        TenderEmbedding.embedding.cosine_distance(question_embedding) < 0.8  # Loose threshold based on empirical testing
     ).order_by(
         'distance'
     ).limit(request.limit).all()
+    
+    # Optional: Log best match distance for monitoring
+    if results:
+        print(f"🔍 Top match distance: {results[0][1]:.3f}")
     
     if not results:
         answer_ar = "لم أجد معلومات كافية للإجابة على سؤالك. يرجى إعادة صياغة السؤال أو تقديم المزيد من التفاصيل."
