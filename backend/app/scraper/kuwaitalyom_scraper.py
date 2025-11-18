@@ -548,7 +548,13 @@ OCR_TEXT:
                         )
                         
                         corrected_full = response.choices[0].message.content.strip()
-                        print(f"  ✅ Stage 3 complete - Text corrected by Vision ({len(corrected_full)} chars)")
+                        
+                        # Check if Vision refused or returned minimal text
+                        if len(corrected_full) < 100 or "unable to" in corrected_full.lower() or "can't assist" in corrected_full.lower() or "cannot help" in corrected_full.lower():
+                            print(f"  ⚠️  Stage 3 returned refusal or minimal text ({len(corrected_full)} chars), falling back to Google OCR")
+                            corrected_full = corrected  # Use original Google OCR text
+                        else:
+                            print(f"  ✅ Stage 3 complete - Text corrected by Vision ({len(corrected_full)} chars)")
                     
                     except Exception as e:
                         print(f"  ⚠️  Stage 3 failed: {e}, using Stage 1 output")
@@ -770,38 +776,23 @@ Return the well-structured Arabic text."""
                 return None
             
             # Kuwait's HTML is malformed - source attribute has no closing quote
-            # Extract only valid base64 characters until we hit the end of the first base64 string
+            # Extract only valid base64 characters until we hit the end
             # Kuwait uses URL-safe base64 (- instead of +, _ instead of /)
-            # The HTML has TWO base64 strings concatenated (PDF data, then next attribute)
-            # We stop at the first '=' padding character (marks end of PDF data)
             raw_data = parts[1]
-            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_')
+            base64_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_=')
             base64_data = []
             stop_reason = "unknown"
             
-            padding_count = 0
+            # Extract all valid base64 characters until we hit something that's clearly not base64
             for i, char in enumerate(raw_data):
-                if char == '=':
-                    # Include up to 2 padding chars
-                    padding_count += 1
-                    base64_data.append(char)
-                    if padding_count >= 2:
-                        stop_reason = f"collected 2 padding chars"
-                        print(f"🛑 Stopped at position {i+1}: {stop_reason}")
-                        break
-                elif char in base64_chars:
-                    if padding_count > 0:
-                        # Hit data after padding - that's the next attribute, stop
-                        stop_reason = f"hit data after padding"
-                        print(f"🛑 Stopped at position {i}: {stop_reason}")
-                        break
+                if char in base64_chars:
                     base64_data.append(char)
                 elif char in (' ', '\t', '\n', '\r'):
                     # Skip whitespace
                     continue
                 else:
-                    # Hit invalid char
-                    stop_reason = f"hit invalid char '{char}'"
+                    # Hit a non-base64 character (likely start of next HTML attribute)
+                    stop_reason = f"hit non-base64 char '{char}'"
                     print(f"🛑 Stopped at position {i}: {stop_reason}")
                     break
             
@@ -937,11 +928,12 @@ Return the well-structured Arabic text."""
             if screenshot_bytes:
                 print(f"🖼️  Using screenshot-based extraction...")
                 result = self._extract_text_from_image(screenshot_bytes)
-                if result and result.get('text') and len(result['text']) > 50:
+                # Lower threshold to 20 chars - even messy Google OCR is better than nothing
+                if result and result.get('text') and len(result['text']) > 20:
                     print(f"✅ Extracted {len(result['text'])} characters from screenshot")
                     return result
                 else:
-                    print(f"⚠️  Screenshot extraction returned minimal text, trying PDF fallback...")
+                    print(f"⚠️  Screenshot extraction returned minimal text (< 20 chars), trying PDF fallback...")
             
             # Method 2: Fallback to PDF extraction (no Vision ministry extraction in this path)
             print(f"📄 Falling back to PDF extraction...")

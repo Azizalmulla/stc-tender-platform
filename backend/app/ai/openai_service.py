@@ -52,7 +52,30 @@ Rules:
                 messages=[{"role": "user", "content": prompt}],
                 temperature=settings.TEMPERATURE,
                 max_tokens=settings.MAX_TOKENS_SUMMARY,
-                response_format={"type": "json_object"}
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "tender_summary",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "summary_ar": {"type": "string"},
+                                "summary_en": {"type": "string"},
+                                "facts_ar": {
+                                    "type": "array",
+                                    "items": {"type": "string"}
+                                },
+                                "facts_en": {
+                                    "type": "array",
+                                    "items": {"type": "string"}
+                                }
+                            },
+                            "required": ["summary_ar", "summary_en", "facts_ar", "facts_en"],
+                            "additionalProperties": False
+                        }
+                    }
+                }
             )
             
             result = json.loads(response.choices[0].message.content)
@@ -64,6 +87,15 @@ Rules:
                 "facts_en": result.get("facts_en", [])
             }
             
+        except json.JSONDecodeError as e:
+            print(f"Summarization JSON error: {e}")
+            print(f"Raw GPT response: {response.choices[0].message.content[:200] if 'response' in locals() else 'N/A'}")
+            return {
+                "summary_ar": title[:200] if lang == "ar" else "",
+                "summary_en": title[:200] if lang == "en" else "",
+                "facts_ar": [],
+                "facts_en": []
+            }
         except Exception as e:
             print(f"Summarization error: {e}")
             return {
