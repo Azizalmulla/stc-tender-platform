@@ -45,103 +45,121 @@ async def get_notifications(
     - New: Tenders published in last 7 days
     - Deadlines: Tenders with deadlines in next 14 days
     """
-    # Use timezone-aware datetime to prevent comparison errors
-    now = datetime.now(timezone.utc)
-    seven_days_ago = now - timedelta(days=7)
-    fourteen_days_ahead = now + timedelta(days=14)
-    
-    # Count postponed tenders
-    postponed_count = db.query(Tender).filter(
-        Tender.is_postponed == True
-    ).count()
-    
-    # Count new tenders (last 7 days)
-    new_count = db.query(Tender).filter(
-        Tender.published_at >= seven_days_ago
-    ).count()
-    
-    # Count upcoming deadlines (next 14 days)
-    deadlines_count = db.query(Tender).filter(
-        and_(
-            Tender.deadline.isnot(None),
-            Tender.deadline >= now,
-            Tender.deadline <= fourteen_days_ahead
+    try:
+        # Use timezone-aware datetime to prevent comparison errors
+        now = datetime.now(timezone.utc)
+        seven_days_ago = now - timedelta(days=7)
+        fourteen_days_ahead = now + timedelta(days=14)
+        
+        # Count postponed tenders
+        postponed_count = db.query(Tender).filter(
+            Tender.is_postponed == True
+        ).count()
+        
+        # Count new tenders (last 7 days) - safe with null check
+        new_count = db.query(Tender).filter(
+            and_(
+                Tender.published_at.isnot(None),
+                Tender.published_at >= seven_days_ago
+            )
+        ).count()
+        
+        # Count upcoming deadlines (next 14 days)
+        deadlines_count = db.query(Tender).filter(
+            and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline >= now,
+                Tender.deadline <= fourteen_days_ahead
+            )
+        ).count()
+        
+        # Get recent notification items (mixed from all categories)
+        items = []
+        
+        # Get postponed items
+        postponed_items = db.query(Tender).filter(
+            Tender.is_postponed == True
+        ).order_by(
+            Tender.published_at.desc()
+        ).limit(limit // 3).all()
+        
+        for tender in postponed_items:
+            items.append(NotificationItem(
+                id=tender.id,
+                title=tender.title or "Untitled",
+                ministry=tender.ministry,
+                url=tender.url,
+                deadline=tender.deadline.isoformat() if tender.deadline else None,
+                published_at=tender.published_at.isoformat() if tender.published_at else None,
+                reason=tender.postponement_reason,
+                type='postponed'
+            ))
+        
+        # Get new items - with null check
+        new_items = db.query(Tender).filter(
+            and_(
+                Tender.published_at.isnot(None),
+                Tender.published_at >= seven_days_ago
+            )
+        ).order_by(
+            Tender.published_at.desc()
+        ).limit(limit // 3).all()
+        
+        for tender in new_items:
+            items.append(NotificationItem(
+                id=tender.id,
+                title=tender.title or "Untitled",
+                ministry=tender.ministry,
+                url=tender.url,
+                deadline=tender.deadline.isoformat() if tender.deadline else None,
+                published_at=tender.published_at.isoformat() if tender.published_at else None,
+                reason=None,
+                type='new'
+            ))
+        
+        # Get deadline items
+        deadline_items = db.query(Tender).filter(
+            and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline >= now,
+                Tender.deadline <= fourteen_days_ahead
+            )
+        ).order_by(
+            Tender.deadline.asc()
+        ).limit(limit // 3).all()
+        
+        for tender in deadline_items:
+            items.append(NotificationItem(
+                id=tender.id,
+                title=tender.title or "Untitled",
+                ministry=tender.ministry,
+                url=tender.url,
+                deadline=tender.deadline.isoformat() if tender.deadline else None,
+                published_at=tender.published_at.isoformat() if tender.published_at else None,
+                reason=None,
+                type='deadline'
+            ))
+        
+        # Sort all items by published date (most recent first)
+        items.sort(key=lambda x: x.published_at or '', reverse=True)
+        
+        return NotificationsSummary(
+            postponed=postponed_count,
+            new=new_count,
+            deadlines=deadlines_count,
+            items=items[:limit]
         )
-    ).count()
-    
-    # Get recent notification items (mixed from all categories)
-    items = []
-    
-    # Get postponed items
-    postponed_items = db.query(Tender).filter(
-        Tender.is_postponed == True
-    ).order_by(
-        Tender.published_at.desc()
-    ).limit(limit // 3).all()
-    
-    for tender in postponed_items:
-        items.append(NotificationItem(
-            id=tender.id,
-            title=tender.title or "Untitled",
-            ministry=tender.ministry,
-            url=tender.url,
-            deadline=tender.deadline.isoformat() if tender.deadline else None,
-            published_at=tender.published_at.isoformat() if tender.published_at else None,
-            reason=tender.postponement_reason,
-            type='postponed'
-        ))
-    
-    # Get new items
-    new_items = db.query(Tender).filter(
-        Tender.published_at >= seven_days_ago
-    ).order_by(
-        Tender.published_at.desc()
-    ).limit(limit // 3).all()
-    
-    for tender in new_items:
-        items.append(NotificationItem(
-            id=tender.id,
-            title=tender.title or "Untitled",
-            ministry=tender.ministry,
-            url=tender.url,
-            deadline=tender.deadline.isoformat() if tender.deadline else None,
-            published_at=tender.published_at.isoformat() if tender.published_at else None,
-            reason=None,
-            type='new'
-        ))
-    
-    # Get deadline items
-    deadline_items = db.query(Tender).filter(
-        and_(
-            Tender.deadline.isnot(None),
-            Tender.deadline >= now,
-            Tender.deadline <= fourteen_days_ahead
+    except Exception as e:
+        print(f"Notifications error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return empty notifications on any error
+        return NotificationsSummary(
+            postponed=0,
+            new=0,
+            deadlines=0,
+            items=[]
         )
-    ).order_by(
-        Tender.deadline.asc()
-    ).limit(limit // 3).all()
-    
-    for tender in deadline_items:
-        items.append(NotificationItem(
-            id=tender.id,
-            title=tender.title or "Untitled",
-            ministry=tender.ministry,
-            url=tender.url,
-            deadline=tender.deadline.isoformat() if tender.deadline else None,
-            published_at=tender.published_at.isoformat() if tender.published_at else None,
-            reason=None,
-            type='deadline'
-        ))
-    
-    # Sort all items by published date (most recent first)
-    items.sort(key=lambda x: x.published_at or '', reverse=True)
-    
-    return NotificationsSummary(
-        postponed=postponed_count,
-        new=new_count,
-        deadlines=deadlines_count,
-        items=items[:limit]
-    )
 
 
 @router.get("/postponed", response_model=List[NotificationItem])

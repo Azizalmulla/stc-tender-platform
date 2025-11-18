@@ -417,42 +417,44 @@ class KuwaitAlyomScraper:
                         # Ask GPT to extract ministry using BOTH OCR text and image
                         # Research shows this is much more accurate than image-only
                         response = client.chat.completions.create(
-                            model="gpt-4o-mini",
+                            model="gpt-4o",  # Use full model for better accuracy
                             messages=[
                                 {
                                     "role": "user",
                                     "content": [
                                         {
                                             "type": "text",
-                                            "text": f"""هذا نص مستخرج من صفحة الجريدة الرسمية الكويتية باستخدام OCR:
+                                            "text": f"""Extract the ministry or government entity name from this tender announcement.
 
+OCR TEXT (may contain errors):
 {ocr_preview}
 
-ابحث في هذا النص عن اسم الوزارة أو الجهة الحكومية أو الشركة المعلنة عن المناقصة.
+TASK:
+1. Look for ministry/entity name in the OCR text first
+2. Use the image to confirm if text is unclear
+3. Return the FULL official name
 
-أمثلة على الأسماء:
+Common patterns to look for:
 - وزارة الداخلية
-- وزارة الأشغال العامة
+- وزارة الأشغال العامة  
 - وزارة الصحة
 - الهيئة العامة للصناعة
-- شركة صناعة الكيماويات البترولية
 - شركة نفط الكويت
 - الهيئة العامة للقوى العاملة
 
-يمكنك استخدام الصورة المرفقة للتأكد من الاسم الصحيح إذا كان النص غير واضح.
+CRITICAL: 
+- Check the TOP of the page in the image
+- Ministry name is usually prominent/large
+- If you see ANY ministry name, return it
+- Even if OCR is broken, READ the image
 
-أرجع الإجابة بصيغة JSON فقط:
-{{
-  "ministry": "اسم الوزارة أو الجهة الحكومية بالكامل"
-}}
-
-إذا لم تجد اسم واضح، أرجع JSON مع ministry كـ null"""
+Return ONLY the ministry name, nothing else."""
                                         },
                                         {
                                             "type": "image_url",
                                             "image_url": {
                                                 "url": f"data:image/png;base64,{base64_image}",
-                                                "detail": "low"  # Low detail is enough since we have OCR text
+                                                "detail": "high"  # High detail for better reading
                                             }
                                         }
                                     ]
@@ -460,7 +462,24 @@ class KuwaitAlyomScraper:
                             ],
                             temperature=0.1,
                             max_tokens=200,
-                            response_format={"type": "json_object"}
+                            response_format={
+                                "type": "json_schema",
+                                "json_schema": {
+                                    "name": "ministry_extraction",
+                                    "strict": True,
+                                    "schema": {
+                                        "type": "object",
+                                        "properties": {
+                                            "ministry": {
+                                                "type": ["string", "null"],
+                                                "description": "Full name of the ministry or government entity, or null if not found"
+                                            }
+                                        },
+                                        "required": ["ministry"],
+                                        "additionalProperties": False
+                                    }
+                                }
+                            }
                         )
                         
                         vision_result = response.choices[0].message.content.strip()
