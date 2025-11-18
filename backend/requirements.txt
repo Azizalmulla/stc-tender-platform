@@ -21,10 +21,12 @@ httpx==0.26.0
 cloudscraper==1.2.71  # Bypass Cloudflare protection
 # playwright removed - using lightweight cloudscraper instead
 
-# PDF Processing
+# PDF Processing & Image Enhancement
 PyMuPDF==1.23.22
 PyPDF2==3.0.1
 Pillow==10.2.0
+opencv-python-headless==4.9.0.80  # Image pre-processing for OCR
+numpy==1.26.3  # Required by opencv
 
 # OCR
 google-cloud-documentai==2.26.0
@@ -48,6 +50,7 @@ validators==0.22.0
 
 # Date conversion (Hijri to Gregorian)
 hijri-converter==2.3.1
+dateparser==1.2.0  # Parse Arabic dates for meeting extraction
 
 # Monitoring
 sentry-sdk[fastapi]==1.40.0

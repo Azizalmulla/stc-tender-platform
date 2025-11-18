@@ -59,7 +59,8 @@ async def keyword_search(
         query = query.filter(Tender.lang == lang)
     
     # Order by relevance (published date as proxy)
-    query = query.order_by(Tender.published_at.desc())
+    # NULLs go last to avoid issues
+    query = query.order_by(Tender.published_at.desc().nullslast())
     
     results = query.limit(limit).all()
     

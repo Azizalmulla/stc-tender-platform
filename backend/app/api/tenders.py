@@ -93,7 +93,8 @@ async def get_tenders(
         query = query.filter(and_(*filters))
     
     # Order by published date (newest first)
-    query = query.order_by(desc(Tender.published_at))
+    # NULLs go last to avoid issues with tenders that have no date
+    query = query.order_by(Tender.published_at.desc().nullslast())
     
     # Pagination
     tenders = query.offset(skip).limit(limit).all()

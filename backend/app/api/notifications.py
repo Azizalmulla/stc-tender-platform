@@ -80,7 +80,7 @@ async def get_notifications(
         postponed_items = db.query(Tender).filter(
             Tender.is_postponed == True
         ).order_by(
-            Tender.published_at.desc()
+            Tender.published_at.desc().nullslast()
         ).limit(limit // 3).all()
         
         for tender in postponed_items:
@@ -102,7 +102,7 @@ async def get_notifications(
                 Tender.published_at >= seven_days_ago
             )
         ).order_by(
-            Tender.published_at.desc()
+            Tender.published_at.desc().nullslast()
         ).limit(limit // 3).all()
         
         for tender in new_items:
@@ -171,7 +171,7 @@ async def get_postponed_notifications(
     tenders = db.query(Tender).filter(
         Tender.is_postponed == True
     ).order_by(
-        Tender.published_at.desc()
+        Tender.published_at.desc().nullslast()
     ).limit(limit).all()
     
     return [
@@ -202,7 +202,7 @@ async def get_new_notifications(
     tenders = db.query(Tender).filter(
         Tender.published_at >= cutoff_date
     ).order_by(
-        Tender.published_at.desc()
+        Tender.published_at.desc().nullslast()
     ).limit(limit).all()
     
     return [
