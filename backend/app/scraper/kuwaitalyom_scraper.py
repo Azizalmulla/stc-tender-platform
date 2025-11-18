@@ -482,7 +482,8 @@ class KuwaitAlyomScraper:
             # Stage 3: GPT-4o VISION correction (image + OCR text together)
             corrected_full = corrected  # Default to Stage 1 output
             
-            if len(corrected) > 100 and image_bytes:
+            # Lower threshold to 80 chars - Google OCR often returns 400-700 chars which is good
+            if len(corrected) > 80 and image_bytes:
                 print(f"  👁️  Stage 3: GPT-4o Vision - Correct severe OCR errors by reading image...")
                 
                 api_key = os.getenv('OPENAI_API_KEY')
@@ -494,7 +495,7 @@ class KuwaitAlyomScraper:
                         # Send OCR text (up to 2000 chars as reference)
                         ocr_text_for_correction = corrected[:2000] if len(corrected) > 2000 else corrected
                         
-                        # Ask GPT-4o Vision to read image and correct OCR
+                        # Ask GPT-4o Vision to correct OCR using safe, policy-compliant prompt
                         response = client.chat.completions.create(
                             model="gpt-4o",  # Full model for best Vision quality
                             messages=[
@@ -503,26 +504,34 @@ class KuwaitAlyomScraper:
                                     "content": [
                                         {
                                             "type": "text",
-                                            "text": f"""You are correcting SEVERELY damaged OCR output from Kuwait government tender documents.
+                                            "text": f"""You are a model that fixes noisy, damaged OCR text.
+You will receive two inputs:
+1. OCR_TEXT = the extracted text from an OCR engine (may be broken or unreadable)
+2. IMAGE = the page image (used only to visually clarify unclear characters)
 
-DAMAGED OCR OUTPUT (contains severe errors and gibberish):
-{ocr_text_for_correction}
+Your tasks:
+- Use the IMAGE only to visually confirm and correct what the OCR_TEXT should say.
+- Correct misspellings, broken characters, missing letters, flipped text, and corrupted lines.
+- Reconstruct text that is incomplete or garbled in the OCR output.
+- Preserve all real text exactly as it appears on the page.
+- Keep the original layout, section order, and line flow.
+- Do NOT summarize or shorten anything.
+- Do NOT describe the image.
+- Do NOT classify the document.
+- Do NOT interpret legal, official, or government context.
+- Do NOT add new meaning.
+- Do NOT refuse. Always output the corrected text.
 
-YOUR TASK:
-1. Look at the actual image below and READ the Arabic text directly
-2. The OCR has SEVERE errors:
-   - Random English gibberish like "PEUGEMAA, LUSTRINIMAS LIBE GENGIVE"
-   - Wrong Arabic letters and words
-   - Mixed garbage characters
-3. IGNORE the OCR output when it's complete nonsense
-4. TRUST THE IMAGE - read what you actually see
-5. Output clean, properly formatted Arabic text
-6. Preserve document structure (sections, paragraphs)
-7. This is official Kuwait government documentation for public procurement
+Output format:
+- Only output the corrected text as plain UTF-8 Arabic/English.
+- No explanations.
+- No comments.
+- No extra sentences.
 
-CRITICAL: If you see nonsensical English letters or gibberish, ignore them completely and read from the image.
+Begin correction.
 
-OUTPUT: Clean Arabic text only, no explanations."""
+OCR_TEXT:
+{ocr_text_for_correction}"""
                                         },
                                         {
                                             "type": "image_url",
@@ -815,22 +824,34 @@ Return the well-structured Arabic text."""
             print(f"   - Data length % 4: {len(base64_data) % 4}")
             print(f"   - Last 50 chars: {base64_data[-50:]}")
             
-            # Decode using URL-safe base64 decoder (handles - and _ automatically)
+            # Decode base64 with proper normalization and padding
             import base64
             try:
-                print(f"🔓 Attempting urlsafe_b64decode...")
-                # Add padding if needed (base64 requires length to be multiple of 4)
-                missing_padding = len(base64_data) % 4
+                print(f"🔓 Normalizing and decoding base64...")
+                
+                # Step 1: Normalize URL-safe base64 to standard base64
+                normalized_data = base64_data.replace('-', '+').replace('_', '/')
+                
+                # Step 2: Strip existing padding (we'll recalculate)
+                normalized_data = normalized_data.rstrip('=')
+                
+                # Step 3: Add correct padding (base64 requires length to be multiple of 4)
+                missing_padding = len(normalized_data) % 4
                 if missing_padding:
-                    base64_data += '=' * (4 - missing_padding)
+                    normalized_data += '=' * (4 - missing_padding)
                     print(f"   - Added {4 - missing_padding} padding characters")
-                pdf_bytes = base64.urlsafe_b64decode(base64_data)
+                
+                print(f"   - Normalized length: {len(normalized_data)} (should be multiple of 4: {len(normalized_data) % 4 == 0})")
+                
+                # Step 4: Decode
+                pdf_bytes = base64.b64decode(normalized_data)
+                
                 print(f"✅ Decoded successfully!")
                 print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
                 print(f"   - First 20 bytes: {pdf_bytes[:20]}")
                 print(f"   - Starts with %PDF: {pdf_bytes.startswith(b'%PDF')}")
             except Exception as e:
-                print(f"❌ urlsafe_b64decode failed: {e}")
+                print(f"❌ Base64 decode failed: {e}")
                 raise
             
             # Verify it's a valid PDF (starts with %PDF)
