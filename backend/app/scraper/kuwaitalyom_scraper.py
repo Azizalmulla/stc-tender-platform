@@ -1225,8 +1225,71 @@ STRUCTURED TEXT:"""
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[dict]:
         """
+        Extract text from image using Claude Sonnet 4.5 Vision
+        
+        Replaces Google Document AI + GPT pipeline with single Claude call
+        for better OCR quality and structured extraction.
+        
+        Args:
+            image_bytes: Image bytes (PNG/JPEG)
+            
+        Returns:
+            Dict with {'text': str, 'ministry': str, 'meeting_date_text': str, 'meeting_location': str} if successful, None otherwise
+        """
+        try:
+            import os
+            
+            # Check if Claude API is configured
+            claude_api_key = os.getenv('ANTHROPIC_API_KEY')
+            if not claude_api_key:
+                print(f"⚠️  ANTHROPIC_API_KEY not configured, falling back to old method")
+                return self._extract_text_from_image_old(image_bytes)
+            
+            print(f"  🧠 Using Claude Sonnet 4.5 for OCR and extraction...")
+            
+            # Import Claude service
+            from app.ai.claude_service import claude_service
+            
+            if not claude_service:
+                print(f"⚠️  Claude service not initialized, falling back to old method")
+                return self._extract_text_from_image_old(image_bytes)
+            
+            # Extract with Claude
+            result = claude_service.extract_tender_from_image(image_bytes, image_format="png")
+            
+            if result and result.get('body'):
+                print(f"  ✅ Claude extracted {len(result['body'])} characters")
+                print(f"  🏛️ Ministry: {result.get('ministry', 'N/A')}")
+                print(f"  📊 Confidence: {result.get('ocr_confidence', 0.0)}")
+                
+                return {
+                    'text': result['body'],
+                    'ministry': result.get('ministry'),
+                    'meeting_date_text': result.get('meeting_date_text'),
+                    'meeting_location': result.get('meeting_location'),
+                    'tender_number': result.get('tender_number'),
+                    'deadline': result.get('deadline'),
+                    'ocr_confidence': result.get('ocr_confidence', 0.5),
+                    'note': result.get('note')
+                }
+            elif result and result.get('note'):
+                print(f"  ⚠️  Claude extraction note: {result['note']}")
+                return None
+            else:
+                print(f"  ⚠️  Claude returned no text")
+                return None
+                
+        except Exception as e:
+            print(f"  ❌ Claude extraction failed: {e}, falling back to old method")
+            import traceback
+            print(traceback.format_exc())
+            # Fallback to old method
+            return self._extract_text_from_image_old(image_bytes)
+    
+    def _extract_text_from_image_old(self, image_bytes: bytes) -> Optional[dict]:
+        """
         OLD METHOD: Extract text from image using Google Document AI and Vision
-        (Kept for backward compatibility, but Vision stage often refuses)
+        (Fallback if Claude is not configured)
         
         Args:
             image_bytes: Image bytes (PNG/JPEG)

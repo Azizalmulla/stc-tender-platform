@@ -38,6 +38,7 @@ pyarabic==0.6.15
 
 # AI & Embeddings
 openai==1.12.0
+anthropic==0.39.0  # Claude Sonnet 4.5 for OCR
 tiktoken==0.6.0
 
 # Utilities

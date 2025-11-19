@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     
+    # Anthropic Claude
+    ANTHROPIC_API_KEY: Optional[str] = None
+    CLAUDE_MODEL: str = "claude-sonnet-4.5-20250929"  # Latest Claude Sonnet 4.5
+    
     # Google Cloud Document AI
     GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS: Optional[str] = None
     DOCUMENTAI_PROCESSOR_NAME: Optional[str] = None  # Format: projects/{project}/locations/{location}/processors/{processor}
