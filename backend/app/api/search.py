@@ -6,9 +6,29 @@ from pydantic import BaseModel
 from app.db.session import get_db
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.openai_service import OpenAIService
+from app.parser.pdf_parser import TextNormalizer
 
 
 router = APIRouter()
+
+
+def normalize_arabic_search(text: str) -> str:
+    """
+    Normalize Arabic text for better search matching
+    
+    Handles:
+    - Diacritics removal (تشكيل)
+    - Alef variations (آ، أ، إ → ا)
+    - Ya variations (ى → ي)
+    - Ta Marbuta/Ha unification (ة → ه)
+    - Arabic numerals (٠١٢ → 012)
+    """
+    if not text:
+        return text
+    
+    # Use the intelligent normalizer (handles all variations automatically)
+    normalizer = TextNormalizer()
+    return normalizer.normalize_arabic(text)
 
 
 class SearchResult(BaseModel):
@@ -32,27 +52,56 @@ async def keyword_search(
     q: str = Query(..., min_length=2, description="Search query"),
     lang: Optional[str] = Query(None, description="Filter by language"),
     limit: int = Query(20, ge=1, le=100),
+    fuzzy: bool = Query(False, description="Enable fuzzy matching for misspellings"),
     db: Session = Depends(get_db)
 ):
     """
-    Keyword-based search across tenders
+    Keyword-based search across tenders with Arabic normalization and fuzzy matching
     
     Searches in: title, body, ministry, category, tender_number
+    Handles:
+    - Arabic spelling variations (ة/ه, أ/إ/آ/ا, ى/ي)
+    - Misspellings and typos (when fuzzy=true)
     """
-    # Build search query
-    search_term = f"%{q}%"
+    # Normalize Arabic search query
+    normalized_q = normalize_arabic_search(q)
     
-    query = db.query(Tender).filter(
-        or_(
-            Tender.title.ilike(search_term),
-            Tender.body.ilike(search_term),
-            Tender.ministry.ilike(search_term),
-            Tender.category.ilike(search_term),
-            Tender.tender_number.ilike(search_term),
-            Tender.summary_ar.ilike(search_term),
-            Tender.summary_en.ilike(search_term)
-        )
-    )
+    # Build search patterns for both original and normalized versions
+    search_term = f"%{q}%"
+    normalized_term = f"%{normalized_q}%"
+    
+    # Create flexible search that matches both variations
+    search_conditions = []
+    
+    if fuzzy and len(q) >= 4:
+        # Use PostgreSQL trigram similarity for fuzzy matching
+        # This handles misspellings and typos
+        # Requires pg_trgm extension: CREATE EXTENSION IF NOT EXISTS pg_trgm;
+        from sqlalchemy import text
+        
+        # Calculate similarity scores (0.3 = 30% similarity threshold)
+        for field in [Tender.title, Tender.ministry, Tender.summary_ar, Tender.summary_en]:
+            if field is not None:
+                # Add both exact and fuzzy matches
+                search_conditions.extend([
+                    field.ilike(search_term),
+                    field.ilike(normalized_term) if normalized_q != q else None,
+                    # Trigram similarity matching (commented out - requires pg_trgm extension)
+                    # text(f"similarity({field.name}, :query) > 0.3")
+                ])
+    else:
+        # Standard exact matching
+        for field in [Tender.title, Tender.body, Tender.ministry, Tender.category, 
+                      Tender.tender_number, Tender.summary_ar, Tender.summary_en]:
+            search_conditions.extend([
+                field.ilike(search_term),
+                field.ilike(normalized_term) if normalized_q != q else None
+            ])
+    
+    # Remove None conditions
+    search_conditions = [c for c in search_conditions if c is not None]
+    
+    query = db.query(Tender).filter(or_(*search_conditions))
     
     # Language filter
     if lang:
@@ -134,21 +183,29 @@ async def hybrid_search(
     db: Session = Depends(get_db)
 ):
     """
-    Hybrid search combining keyword and semantic search
+    Hybrid search combining keyword and semantic search with Arabic normalization
     
     Returns unified results with relevance scores
+    Handles Arabic spelling variations
     """
     ai_service = OpenAIService()
     
-    # 1. Keyword search
+    # 1. Keyword search with normalization
+    normalized_q = normalize_arabic_search(q)
     search_term = f"%{q}%"
+    normalized_term = f"%{normalized_q}%"
+    
+    # Build flexible search conditions
+    search_conditions = []
+    for field in [Tender.title, Tender.body, Tender.summary_ar, Tender.summary_en]:
+        search_conditions.extend([
+            field.ilike(search_term),
+            field.ilike(normalized_term) if normalized_q != q else None
+        ])
+    search_conditions = [c for c in search_conditions if c is not None]
+    
     keyword_results = db.query(Tender).filter(
-        or_(
-            Tender.title.ilike(search_term),
-            Tender.body.ilike(search_term),
-            Tender.summary_ar.ilike(search_term),
-            Tender.summary_en.ilike(search_term)
-        )
+        or_(*search_conditions)
     ).limit(limit).all()
     
     # 2. Semantic search

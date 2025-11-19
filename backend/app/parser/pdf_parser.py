@@ -191,6 +191,10 @@ class TextNormalizer:
         # Unify Ya and Alef Maqsura
         text = text.replace('ى', 'ي')
         
+        # Unify Ta Marbuta and Ha (for search flexibility)
+        # This allows matching regardless of which one is used
+        text = text.replace('ة', 'ه')
+        
         # Convert Eastern Arabic numerals to Western
         eastern_to_western = str.maketrans('٠١٢٣٤٥٦٧٨٩', '0123456789')
         text = text.translate(eastern_to_western)

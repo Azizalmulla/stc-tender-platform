@@ -194,19 +194,7 @@ Rules:
             Dict with answer_ar, answer_en, citations, confidence
         """
         # Build context from documents
-        # TEMPORARY: Sanitize body text to prevent gibberish from breaking JSON
-        def sanitize_text(text):
-            """Remove problematic characters that might break JSON parsing"""
-            if not text:
-                return "N/A"
-            # Remove control characters and normalize
-            import re
-            text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
-            # Truncate if too short (likely gibberish)
-            if len(text.strip()) < 50:
-                return f"[Short content: {len(text)} chars - may contain OCR errors]"
-            return text
-        
+        # Note: With Claude Sonnet 4.5 OCR, text is now clean - no sanitization needed
         context = "\n\n---\n\n".join([
             f"Tender Number: {doc.get('tender_number', 'N/A')}\n"
             f"Title: {doc['title']}\n"
@@ -223,7 +211,7 @@ Rules:
             f"Summary (Arabic): {doc.get('summary_ar', 'N/A')[:500]}\n"
             f"Summary (English): {doc.get('summary_en', 'N/A')[:500]}\n"
             f"Key Facts: {', '.join(doc.get('facts_ar', [])[:5]) if doc.get('facts_ar') else 'N/A'}\n"
-            f"Full Text: {sanitize_text(doc['body'][:2000])}\n"
+            f"Full Text: {(doc.get('body', '') or 'N/A')[:3000]}\n"
             f"URL: {doc['url']}"
             for doc in context_docs[:10]  # Use top 10 documents for better coverage
         ])
