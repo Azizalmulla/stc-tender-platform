@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     # Anthropic Claude
     ANTHROPIC_API_KEY: Optional[str] = None
-    CLAUDE_MODEL: str = "claude-sonnet-4.5-20250929"  # Latest Claude Sonnet 4.5
+    CLAUDE_MODEL: str = "claude-sonnet-4-5-20250929"  # Latest Claude Sonnet 4.5 (correct name)
     
     # Google Cloud Document AI
     GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS: Optional[str] = None
