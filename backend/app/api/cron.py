@@ -52,7 +52,7 @@ def run_scrape_task():
                 category_tenders = scraper.scrape_all(
                     category_id=category_id,
                     days_back=14,           # Last 2 weeks for weekly scrape
-                    limit=500,              # ✅ INCREASED: Process up to 500 per category (with pagination)
+                    limit=10,               # 🧪 TESTING: Small batch for quick validation
                     extract_pdfs=True       # Enable Google Doc AI OCR
                 )
                 all_tenders.extend(category_tenders)
