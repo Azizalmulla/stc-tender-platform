@@ -302,72 +302,89 @@ class KuwaitAlyomScraper:
             logger.error(traceback.format_exc())
             return [], 0
     
-    def _screenshot_page_with_browserless(self, edition_id: str, page_number: int) -> Optional[bytes]:
+    def _screenshot_page_with_browserless(self, edition_id: str, page_number: int, max_retries: int = 2) -> Optional[bytes]:
         """
-        Screenshot a flipbook page using Browserless API
+        Screenshot a flipbook page using Browserless API with retry logic
         
         Args:
             edition_id: Gazette edition ID
             page_number: Page number in the magazine
+            max_retries: Maximum number of retry attempts (default: 2)
             
         Returns:
             Screenshot bytes (PNG) if successful, None otherwise
         """
         import os
         import requests
+        import time
         
         browserless_api_key = os.getenv('BROWSERLESS_API_KEY')
         if not browserless_api_key or browserless_api_key == 'paste-your-browserless-api-key-here':
             print(f"⚠️  BROWSERLESS_API_KEY not configured, skipping screenshot")
             return None
         
-        try:
-            print(f"📸 Screenshotting page {page_number} with Browserless...")
-            
-            flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
-            
-            # Browserless screenshot API (updated endpoint)
-            browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}"
-            
-            # Convert session cookies to Browserless format
-            cookies = []
-            for cookie in self.session.cookies:
-                cookies.append({
-                    "name": cookie.name,
-                    "value": cookie.value,
-                    "domain": cookie.domain or ".kuwaitalyawm.media.gov.kw",
-                    "path": cookie.path or "/"
-                })
-            
-            payload = {
-                "url": flip_url,
-                "options": {
-                    "fullPage": False,
-                    "type": "png",
-                    "encoding": "binary"
-                },
-                "gotoOptions": {
-                    "waitUntil": "networkidle2"
-                },
-                "cookies": cookies,  # Pass authenticated session cookies
-                "waitForTimeout": 5000  # Wait 5 seconds for flipbook to render PDF
-            }
-            
-            response = requests.post(browserless_url, json=payload, timeout=30)
-            
-            if response.status_code != 200:
-                print(f"❌ Browserless API error: {response.status_code}")
-                print(f"   Response: {response.text[:200]}")
+        flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+        browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}"
+        
+        for attempt in range(max_retries + 1):
+            try:
+                if attempt > 0:
+                    print(f"🔄 Retry attempt {attempt}/{max_retries} for page {page_number}...")
+                    time.sleep(2)  # Wait 2 seconds before retry
+                else:
+                    print(f"📸 Screenshotting page {page_number} with Browserless...")
+                
+                # Convert session cookies to Browserless format
+                cookies = []
+                for cookie in self.session.cookies:
+                    cookies.append({
+                        "name": cookie.name,
+                        "value": cookie.value,
+                        "domain": cookie.domain or ".kuwaitalyawm.media.gov.kw",
+                        "path": cookie.path or "/"
+                    })
+                
+                payload = {
+                    "url": flip_url,
+                    "options": {
+                        "fullPage": False,
+                        "type": "png",
+                        "encoding": "binary"
+                    },
+                    "setViewport": {
+                        "width": 1920,
+                        "height": 1080,
+                        "deviceScaleFactor": 2  # Retina quality for better OCR
+                    },
+                    "gotoOptions": {
+                        "waitUntil": "networkidle2",
+                        "ignoreHTTPSErrors": True  # Handle SSL certificate errors
+                    },
+                    "cookies": cookies,  # Pass authenticated session cookies
+                    "waitForTimeout": 5000  # Wait 5 seconds for flipbook to render PDF
+                }
+                
+                response = requests.post(browserless_url, json=payload, timeout=30)
+                
+                if response.status_code != 200:
+                    print(f"❌ Browserless API error: {response.status_code}")
+                    print(f"   Response: {response.text[:200]}")
+                    if attempt < max_retries:
+                        continue  # Retry
+                    return None
+                
+                screenshot_bytes = response.content
+                print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+                
+                return screenshot_bytes
+                
+            except Exception as e:
+                print(f"❌ Error screenshotting with Browserless: {e}")
+                if attempt < max_retries:
+                    continue  # Retry
                 return None
-            
-            screenshot_bytes = response.content
-            print(f"✅ Screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
-            
-            return screenshot_bytes
-            
-        except Exception as e:
-            print(f"❌ Error screenshotting with Browserless: {e}")
-            return None
+        
+        return None
     
     def _preprocess_image(self, image_bytes: bytes) -> bytes:
         """
@@ -1484,10 +1501,13 @@ STRUCTURED TEXT:"""
                 # Step 1: Normalize URL-safe base64 to standard base64
                 normalized_data = base64_data.replace('-', '+').replace('_', '/')
                 
-                # Step 2: Strip existing padding (we'll recalculate)
+                # Step 2: Remove all whitespace and invalid characters
+                normalized_data = re.sub(r'[^A-Za-z0-9+/=]', '', normalized_data)
+                
+                # Step 3: Strip existing padding (we'll recalculate)
                 normalized_data = normalized_data.rstrip('=')
                 
-                # Step 3: Add correct padding (base64 requires length to be multiple of 4)
+                # Step 4: Add correct padding (base64 requires length to be multiple of 4)
                 missing_padding = len(normalized_data) % 4
                 if missing_padding:
                     normalized_data += '=' * (4 - missing_padding)
@@ -1495,8 +1515,14 @@ STRUCTURED TEXT:"""
                 
                 print(f"   - Normalized length: {len(normalized_data)} (should be multiple of 4: {len(normalized_data) % 4 == 0})")
                 
-                # Step 4: Decode
-                pdf_bytes = base64.b64decode(normalized_data)
+                # Step 5: Validate base64 string before decoding
+                if not re.match(r'^[A-Za-z0-9+/]*={0,2}$', normalized_data):
+                    print(f"❌ Invalid base64 characters detected after normalization")
+                    print(f"   - Last 100 chars: {normalized_data[-100:]}")
+                    return None
+                
+                # Step 6: Decode with validation
+                pdf_bytes = base64.b64decode(normalized_data, validate=True)
                 
                 print(f"✅ Decoded successfully!")
                 print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
@@ -1504,7 +1530,9 @@ STRUCTURED TEXT:"""
                 print(f"   - Starts with %PDF: {pdf_bytes.startswith(b'%PDF')}")
             except Exception as e:
                 print(f"❌ Base64 decode failed: {e}")
-                raise
+                print(f"   - This usually means the PDF data in HTML is corrupted")
+                print(f"   - Browserless screenshot will be used instead (more reliable)")
+                return None  # Don't raise, just return None to use screenshot fallback
             
             # Verify it's a valid PDF (starts with %PDF)
             if not pdf_bytes.startswith(b'%PDF'):

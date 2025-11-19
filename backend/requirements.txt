@@ -41,6 +41,9 @@ openai==1.12.0
 anthropic==0.39.0  # Claude Sonnet 4.5 for OCR
 tiktoken==0.6.0
 
+# Date Processing
+hijri-converter==2.3.1  # Hijri-Gregorian date conversion for Kuwait tenders
+
 # Utilities
 python-dotenv==1.0.1
 pydantic==2.6.0
@@ -48,9 +51,6 @@ pydantic-settings==2.1.0
 python-dateutil==2.8.2
 pytz==2024.1
 validators==0.22.0
-
-# Date conversion (Hijri to Gregorian)
-hijri-converter==2.3.1
 dateparser==1.2.0  # Parse Arabic dates for meeting extraction
 
 # Monitoring

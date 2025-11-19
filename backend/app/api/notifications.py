@@ -150,16 +150,28 @@ async def get_notifications(
             items=items[:limit]
         )
     except Exception as e:
-        print(f"Notifications error: {e}")
+        print(f"❌ Notifications error: {e}")
         import traceback
+        print(f"   Stack trace:")
         traceback.print_exc()
-        # Return empty notifications on any error
-        return NotificationsSummary(
-            postponed=0,
-            new=0,
-            deadlines=0,
-            items=[]
-        )
+        
+        # Try to provide partial data if possible
+        try:
+            # At least return the counts if items failed
+            return NotificationsSummary(
+                postponed=postponed_count if 'postponed_count' in locals() else 0,
+                new=new_count if 'new_count' in locals() else 0,
+                deadlines=deadlines_count if 'deadlines_count' in locals() else 0,
+                items=[]
+            )
+        except:
+            # Complete fallback
+            return NotificationsSummary(
+                postponed=0,
+                new=0,
+                deadlines=0,
+                items=[]
+            )
 
 
 @router.get("/postponed", response_model=List[NotificationItem])

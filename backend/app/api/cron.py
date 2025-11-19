@@ -10,8 +10,10 @@ from app.core.config import settings
 from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
-from app.ai.openai_service import OpenAIService
+from app.ai.openai_service import OpenAIService  # Only for embeddings
+from app.ai.claude_service import claude_service  # For summarization & extraction
 from app.parser.pdf_parser import TextNormalizer
+from app.utils.date_validator import date_validator  # Extreme date accuracy
 
 router = APIRouter(prefix="/cron", tags=["cron"])
 
@@ -89,13 +91,13 @@ def run_scrape_task():
                     Tender.tender_number == tender_data.get('tender_number')
                 ).first() if tender_data.get('tender_number') else None
                 
-                # Kuwait Alyom scraper already extracted PDF text via Google Doc AI OCR
+                # Kuwait Alyom scraper already extracted PDF text via Claude Sonnet 4.5 OCR
                 pdf_text = tender_data.get('pdf_text')  # Already extracted by scraper
                 description = tender_data.get('description', '')
                 
                 # Prepare text for AI (combine description + PDF content)
                 if pdf_text:
-                    print(f"  ✅ Using Google Doc AI OCR text ({len(pdf_text)} characters)")
+                    print(f"  ✅ Using OCR extracted text ({len(pdf_text)} characters)")
                     # Use PDF text as main body, description as summary
                     full_text = f"{description}\n\n{pdf_text[:50000]}"  # Limit to 50K chars
                     body_text = pdf_text[:100000]  # Store up to 100K chars
@@ -108,14 +110,30 @@ def run_scrape_task():
                 if tender_data.get('language') == 'ar':
                     text = normalizer.normalize_arabic(text)
                 
-                # AI Processing
-                extracted = ai_service.extract_structured_data(text)
-                summary_data = ai_service.summarize_tender(
+                # AI Processing with Claude Sonnet 4.5
+                print(f"  🧠 Using Claude for summarization and extraction...")
+                extracted = claude_service.extract_structured_data(text)
+                
+                # Pre-validate dates before summarization
+                potential_date_issue = ""
+                if extracted.get('deadline') and tender_data.get('published_at'):
+                    try:
+                        from datetime import datetime as dt
+                        deadline_dt = dt.fromisoformat(extracted['deadline'].replace('Z', '+00:00')) if isinstance(extracted['deadline'], str) else extracted['deadline']
+                        published_dt = tender_data['published_at']
+                        if deadline_dt < published_dt:
+                            potential_date_issue = "\n\n⚠️ تحذير: الموعد النهائي قبل تاريخ النشر - قد يكون خطأ في التاريخ أو مناقصة منتهية"
+                    except:
+                        pass
+                
+                summary_data = claude_service.summarize_tender(
                     tender_data.get('title', ''),
-                    tender_data.get('description', ''),
+                    full_text + potential_date_issue,  # Add date warning to text for Claude
                     tender_data.get('language', 'ar')
                 )
                 summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
+                
+                # OpenAI only for embeddings (Claude doesn't have embeddings API)
                 embedding = ai_service.generate_embedding(text)
                 
                 # Check for postponement
@@ -151,6 +169,28 @@ def run_scrape_task():
                         })
                         postponement_reason = f"Deadline moved from {existing_by_number.deadline.date()} to {new_deadline.date()}"
                         postponed += 1
+                
+                # 📅 COMPREHENSIVE DATE VALIDATION (Extreme Accuracy for STC)
+                date_validation_result = date_validator.validate_deadline(
+                    new_deadline,
+                    tender_data.get('published_at')
+                )
+                
+                if date_validation_result:
+                    print(f"  📅 Date Validation: {date_validation_result.get('message', 'OK')}")
+                    
+                    # Log issues
+                    if not date_validation_result.get('valid') and date_validation_result.get('valid') is not None:
+                        print(f"  ⚠️  DATE ISSUE: {date_validation_result.get('issue')}")
+                        
+                        # Log suggestions if available
+                        for suggestion in date_validation_result.get('suggestions', []):
+                            print(f"  💡 Suggestion ({suggestion.get('confidence', 0):.0%} confidence):")
+                            print(f"     Type: {suggestion.get('type')}")
+                            print(f"     Reason: {suggestion.get('reason')}")
+                            if 'suggested' in suggestion:
+                                print(f"     Suggested Date: {suggestion.get('suggested')}")
+                                print(f"     Original Date: {suggestion.get('original')}")
                 
                 # Create tender
                 tender = Tender(
