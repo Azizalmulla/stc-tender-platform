@@ -194,13 +194,37 @@ Rules:
             Dict with answer_ar, answer_en, citations, confidence
         """
         # Build context from documents
+        # TEMPORARY: Sanitize body text to prevent gibberish from breaking JSON
+        def sanitize_text(text):
+            """Remove problematic characters that might break JSON parsing"""
+            if not text:
+                return "N/A"
+            # Remove control characters and normalize
+            import re
+            text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
+            # Truncate if too short (likely gibberish)
+            if len(text.strip()) < 50:
+                return f"[Short content: {len(text)} chars - may contain OCR errors]"
+            return text
+        
         context = "\n\n---\n\n".join([
+            f"Tender Number: {doc.get('tender_number', 'N/A')}\n"
             f"Title: {doc['title']}\n"
-            f"Body: {doc['body'][:3000]}\n"
-            f"URL: {doc['url']}\n"
+            f"Ministry: {doc.get('ministry', 'N/A')}\n"
+            f"Category: {doc.get('category', 'N/A')}\n"
             f"Published: {doc.get('published_at', 'N/A')}\n"
             f"Deadline: {doc.get('deadline', 'N/A')}\n"
-            f"Ministry: {doc.get('ministry', 'N/A')}"
+            f"Document Price: {doc.get('document_price_kd', 'N/A')} KD\n"
+            f"Meeting Date: {doc.get('meeting_date', 'N/A')}\n"
+            f"Meeting Location: {doc.get('meeting_location', 'N/A')}\n"
+            f"Postponed: {'Yes' if doc.get('is_postponed') else 'No'}\n"
+            f"Original Deadline: {doc.get('original_deadline', 'N/A')}\n"
+            f"Postponement Reason: {doc.get('postponement_reason', 'N/A')}\n"
+            f"Summary (Arabic): {doc.get('summary_ar', 'N/A')[:500]}\n"
+            f"Summary (English): {doc.get('summary_en', 'N/A')[:500]}\n"
+            f"Key Facts: {', '.join(doc.get('facts_ar', [])[:5]) if doc.get('facts_ar') else 'N/A'}\n"
+            f"Full Text: {sanitize_text(doc['body'][:2000])}\n"
+            f"URL: {doc['url']}"
             for doc in context_docs[:10]  # Use top 10 documents for better coverage
         ])
         
@@ -223,6 +247,42 @@ INSTRUCTIONS:
 6. If multiple tenders match, list them clearly with numbers
 7. Include key details: Tender number, Ministry, Deadline when available
 8. Be concise but comprehensive
+
+OUTPUT FORMAT:
+
+For single tender, use this exact format:
+---
+**Tender: [Tender Number or Title]**
+
+• Ministry: [ministry name]
+• Deadline: [deadline date or "Not specified"]
+• Category: [category]
+• Details: [brief 1-line summary of requirements/purpose]
+
+[View Full Details]([url])
+---
+
+For multiple tenders, use this exact format:
+---
+Found [N] tenders:
+
+**1. [Tender Number]**
+   • Ministry: [ministry]
+   • Deadline: [deadline or "Not specified"]
+   • [Brief summary]
+   [Link]([url])
+
+**2. [Tender Number]**
+   • Ministry: [ministry]
+   • Deadline: [deadline or "Not specified"]
+   • [Brief summary]
+   [Link]([url])
+
+[Continue for all tenders...]
+---
+
+For count/aggregation queries, use simple format:
+"There are [N] tenders in the system." or "Found [N] tenders from [ministry]."
 
 MULTILINGUAL:
 - Detect question language and respond in BOTH Arabic and English
@@ -270,11 +330,24 @@ Return JSON:
                 "confidence": result.get("confidence", 0.5)
             }
             
-        except Exception as e:
-            print(f"Q&A error: {e}")
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON parsing error in Q&A: {e}")
+            print(f"GPT response: {response.choices[0].message.content[:500]}")
+            # Likely due to gibberish in context causing malformed JSON
             return {
-                "answer_ar": "حدث خطأ في المعالجة",
-                "answer_en": "Processing error occurred",
+                "answer_ar": "عذراً، حدث خطأ في معالجة البيانات. قد تحتوي بعض المناقصات على نصوص غير واضحة.",
+                "answer_en": "Sorry, a data processing error occurred. Some tender text may contain unclear content.",
+                "citations": [],
+                "confidence": 0.3
+            }
+        except Exception as e:
+            print(f"❌ Q&A error: {e}")
+            print(f"Error type: {type(e).__name__}")
+            import traceback
+            print(traceback.format_exc())
+            return {
+                "answer_ar": "حدث خطأ في المعالجة. يرجى المحاولة مرة أخرى.",
+                "answer_en": "Processing error occurred. Please try again.",
                 "citations": [],
                 "confidence": 0.0
             }

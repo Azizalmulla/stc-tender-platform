@@ -1928,12 +1928,21 @@ STRUCTURED TEXT:"""
                 if pdf_result:
                     pdf_text = pdf_result.get('text')
                     vision_ministry = pdf_result.get('ministry')
-                    extracted_fields = pdf_result.get('extracted_fields', {})
                     
-                    # Use Vision-extracted ministry if available
+                    # Claude returns meeting info directly in pdf_result
+                    meeting_date_text = pdf_result.get('meeting_date_text')
+                    meeting_location = pdf_result.get('meeting_location')
+                    
+                    # Also check old 'extracted_fields' format for backward compatibility
+                    extracted_fields = pdf_result.get('extracted_fields', {})
+                    if extracted_fields:
+                        meeting_date_text = meeting_date_text or extracted_fields.get('meeting_date_text')
+                        meeting_location = meeting_location or extracted_fields.get('meeting_location')
+                    
+                    # Use Vision/Claude-extracted ministry if available
                     if vision_ministry:
                         ministry = vision_ministry
-                        print(f"✅ Extracted details - Ministry: {ministry} (from Vision)")
+                        print(f"✅ Extracted details - Ministry: {ministry} (from Claude/Vision)")
                     else:
                         # Fallback to regex parsing if Vision didn't find ministry
                         ocr_data = self.parse_ocr_text(pdf_text)
@@ -1947,18 +1956,13 @@ STRUCTURED TEXT:"""
                     
                     # Extract meeting information if available
                     meeting_date = None
-                    meeting_location = None
-                    if extracted_fields:
-                        meeting_date_text = extracted_fields.get('meeting_date_text')
-                        meeting_location = extracted_fields.get('meeting_location')
-                        
-                        if meeting_date_text:
-                            meeting_date = self._parse_meeting_date(meeting_date_text)
-                            if meeting_date:
-                                print(f"✅ Extracted meeting date: {meeting_date.strftime('%Y-%m-%d %H:%M')}")
-                        
-                        if meeting_location:
-                            print(f"✅ Extracted meeting location: {meeting_location}")
+                    if meeting_date_text:
+                        meeting_date = self._parse_meeting_date(meeting_date_text)
+                        if meeting_date:
+                            print(f"✅ Extracted meeting date: {meeting_date.strftime('%Y-%m-%d %H:%M')}")
+                    
+                    if meeting_location:
+                        print(f"✅ Extracted meeting location: {meeting_location}")
             
             # Generate content hash for deduplication
             content = f"KA-{tender_id}|{title}|{edition_no}"

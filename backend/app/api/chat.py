@@ -197,15 +197,26 @@ async def ask_question(
         
         if exact_tender:
             print(f"✅ Found exact tender: {exact_tender.title}")
-            # Return this tender directly without RAG
+            # Return this tender directly without RAG with FULL context
             context_docs = [{
                 "title": exact_tender.title or "",
+                "tender_number": exact_tender.tender_number or "Not specified",
                 "body": exact_tender.body or "",
+                "summary_ar": exact_tender.summary_ar or "",
+                "summary_en": exact_tender.summary_en or "",
+                "facts_ar": exact_tender.facts_ar or [],
+                "facts_en": exact_tender.facts_en or [],
                 "url": exact_tender.url,
                 "published_at": exact_tender.published_at.isoformat() if exact_tender.published_at else None,
                 "deadline": exact_tender.deadline.isoformat() if exact_tender.deadline else None,
                 "ministry": exact_tender.ministry,
-                "category": exact_tender.category
+                "category": exact_tender.category,
+                "document_price_kd": float(exact_tender.document_price_kd) if exact_tender.document_price_kd else None,
+                "meeting_date": exact_tender.meeting_date.isoformat() if exact_tender.meeting_date else None,
+                "meeting_location": exact_tender.meeting_location,
+                "is_postponed": exact_tender.is_postponed,
+                "original_deadline": exact_tender.original_deadline.isoformat() if exact_tender.original_deadline else None,
+                "postponement_reason": exact_tender.postponement_reason
             }]
             
             # Generate answer using exact match
@@ -347,16 +358,27 @@ async def ask_question(
             session_id=session_id
         )
     
-    # 6. Prepare context documents
+    # 6. Prepare context documents with FULL tender information
     context_docs = [
         {
             "title": tender.title or "",
+            "tender_number": tender.tender_number or "Not specified",
             "body": tender.body or "",
+            "summary_ar": tender.summary_ar or "",
+            "summary_en": tender.summary_en or "",
+            "facts_ar": tender.facts_ar or [],
+            "facts_en": tender.facts_en or [],
             "url": tender.url,
             "published_at": tender.published_at.isoformat() if tender.published_at else None,
             "deadline": tender.deadline.isoformat() if tender.deadline else None,
             "ministry": tender.ministry,
-            "category": tender.category
+            "category": tender.category,
+            "document_price_kd": float(tender.document_price_kd) if tender.document_price_kd else None,
+            "meeting_date": tender.meeting_date.isoformat() if tender.meeting_date else None,
+            "meeting_location": tender.meeting_location,
+            "is_postponed": tender.is_postponed,
+            "original_deadline": tender.original_deadline.isoformat() if tender.original_deadline else None,
+            "postponement_reason": tender.postponement_reason
         }
         for tender, distance in results
     ]
