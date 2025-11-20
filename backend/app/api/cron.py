@@ -198,6 +198,10 @@ def run_scrape_task():
                         # Make existing deadline timezone-aware (UTC)
                         existing_deadline = existing_deadline.replace(tzinfo=timezone.utc)
                     
+                    # Also ensure new_deadline is timezone-aware
+                    if new_deadline.tzinfo is None:
+                        new_deadline = new_deadline.replace(tzinfo=timezone.utc)
+                    
                     if new_deadline > existing_deadline:
                         is_postponed = True
                         original_deadline = existing_by_number.original_deadline or existing_by_number.deadline

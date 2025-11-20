@@ -183,6 +183,17 @@ Return ONLY valid JSON, no additional text."""
             # Parse JSON response
             result = json.loads(response.choices[0].message.content)
             
+            # Handle case where Mistral returns a list instead of dict
+            if isinstance(result, list):
+                if len(result) > 0:
+                    result = result[0]  # Take first item
+                else:
+                    raise ValueError("Mistral returned empty list")
+            
+            # Ensure result is a dict
+            if not isinstance(result, dict):
+                raise ValueError(f"Mistral returned unexpected type: {type(result)}")
+            
             return {
                 "summary_ar": result.get("summary_ar", ""),
                 "summary_en": result.get("summary_en", ""),
@@ -261,6 +272,17 @@ Return ONLY valid JSON."""
             
             # Parse JSON response
             result = json.loads(response.choices[0].message.content)
+            
+            # Handle case where Mistral returns a list instead of dict
+            if isinstance(result, list):
+                if len(result) > 0:
+                    result = result[0]  # Take first item
+                else:
+                    raise ValueError("Mistral returned empty list")
+            
+            # Ensure result is a dict
+            if not isinstance(result, dict):
+                raise ValueError(f"Mistral returned unexpected type: {type(result)}")
             
             return {
                 "ministry": result.get("ministry"),
