@@ -351,15 +351,6 @@ class KuwaitAlyomScraper:
                         "type": "png",
                         "encoding": "binary"
                     },
-                    "setViewport": {
-                        "width": 1920,
-                        "height": 1080,
-                        "deviceScaleFactor": 2  # Retina quality for better OCR
-                    },
-                    "gotoOptions": {
-                        "waitUntil": "networkidle2",
-                        "ignoreHTTPSErrors": True  # Handle SSL certificate errors
-                    },
                     "cookies": cookies,  # Pass authenticated session cookies
                     "waitForTimeout": 5000  # Wait 5 seconds for flipbook to render PDF
                 }
