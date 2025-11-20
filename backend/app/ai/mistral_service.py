@@ -16,7 +16,7 @@ class MistralAIService:
         if not settings.MISTRAL_API_KEY or settings.MISTRAL_API_KEY == 'paste-your-mistral-api-key-here':
             raise ValueError("MISTRAL_API_KEY not configured")
         self.client = Mistral(api_key=settings.MISTRAL_API_KEY)
-        self.ocr_model = "mistral-ocr-2505"  # Latest OCR model (May 2025 - improved version)
+        self.ocr_model = "mistral-ocr-latest"  # Auto-updates to newest OCR model (recommended by Mistral docs)
         self.reasoning_model = "mistral-large-latest"  # For understanding & extraction
     
     def extract_text_from_image(
