@@ -112,45 +112,18 @@ def run_scrape_task():
                     text = normalizer.normalize_arabic(text)
                 
                 # ============================================
-                # AI Processing: Mistral (Primary) → Claude (Fallback)
+                # SMART HYBRID: Claude Reasoning (Primary) → Mistral (Fallback)
+                # Note: Mistral OCR is still primary for text extraction (in scraper)
                 # ============================================
                 
-                # Try Mistral first
+                # Try Claude first for summarization & extraction (more reliable for critical data)
                 extracted = None
                 summary_data = None
                 
-                if mistral_service:
-                    try:
-                        print(f"  🚀 Using Mistral Large for summarization and extraction (primary)...")
-                        
-                        # Structured extraction with Mistral
-                        extracted = mistral_service.extract_structured_data(text)
-                        
-                        # Summarization with Mistral
-                        if extracted and extracted.get('success'):
-                            summary_data = mistral_service.summarize_tender(
-                                full_text,
-                                tender_number=extracted.get('tender_number'),
-                                entity=extracted.get('ministry'),
-                                deadline=extracted.get('deadline')
-                            )
-                        
-                        # Check if both succeeded
-                        if extracted and extracted.get('success') and summary_data and summary_data.get('success'):
-                            print(f"  ✅ Mistral AI processing successful")
-                        else:
-                            print(f"  ⚠️  Mistral AI incomplete, falling back to Claude...")
-                            extracted = None
-                            summary_data = None
+                try:
+                    print(f"  🧠 Using Claude Sonnet 4.5 for summarization and extraction (primary)...")
                     
-                    except Exception as e:
-                        print(f"  ⚠️  Mistral AI failed: {e}, falling back to Claude...")
-                        extracted = None
-                        summary_data = None
-                
-                # Fallback to Claude if Mistral failed
-                if not extracted or not summary_data:
-                    print(f"  🧠 Using Claude Sonnet 4.5 for summarization and extraction (fallback)...")
+                    # Structured extraction with Claude
                     extracted = claude_service.extract_structured_data(text)
                     
                     # Pre-validate dates before summarization
@@ -165,11 +138,42 @@ def run_scrape_task():
                         except:
                             pass
                     
+                    # Summarization with Claude
                     summary_data = claude_service.summarize_tender(
                         tender_data.get('title', ''),
                         full_text + potential_date_issue,
                         tender_data.get('language', 'ar')
                     )
+                    
+                    print(f"  ✅ Claude AI processing successful")
+                
+                except Exception as e:
+                    print(f"  ⚠️  Claude failed: {e}, falling back to Mistral...")
+                    extracted = None
+                    summary_data = None
+                
+                # Fallback to Mistral if Claude failed
+                if (not extracted or not summary_data) and mistral_service:
+                    try:
+                        print(f"  🚀 Using Mistral Large for summarization and extraction (fallback)...")
+                        
+                        # Structured extraction with Mistral
+                        extracted = mistral_service.extract_structured_data(text)
+                        
+                        # Summarization with Mistral
+                        if extracted and extracted.get('success'):
+                            summary_data = mistral_service.summarize_tender(
+                                full_text,
+                                tender_number=extracted.get('tender_number'),
+                                entity=extracted.get('ministry'),
+                                deadline=extracted.get('deadline')
+                            )
+                        
+                        if extracted and extracted.get('success') and summary_data and summary_data.get('success'):
+                            print(f"  ✅ Mistral AI processing successful")
+                    
+                    except Exception as e:
+                        print(f"  ❌ Mistral also failed: {e}")
                 
                 summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
                 
