@@ -52,30 +52,52 @@ class DateValidator:
             # Detect common OCR errors
             suggestions = []
             
-            # Check for single digit confusion (6 vs 16 vs 26)
-            if abs_diff == 10:
-                # Could be 6 vs 16
-                corrected_deadline = deadline + timedelta(days=10)
-                suggestions.append({
-                    "type": "digit_confusion",
-                    "original": deadline.strftime("%Y-%m-%d"),
-                    "suggested": corrected_deadline.strftime("%Y-%m-%d"),
-                    "reason": "Possible OCR confusion: '6' vs '16' in date",
-                    "confidence": 0.8
-                })
-            elif abs_diff == 20:
-                # Could be 6 vs 26
-                corrected_deadline = deadline + timedelta(days=20)
-                suggestions.append({
-                    "type": "digit_confusion",
-                    "original": deadline.strftime("%Y-%m-%d"),
-                    "suggested": corrected_deadline.strftime("%Y-%m-%d"),
-                    "reason": "Possible OCR confusion: '6' vs '26' in date",
-                    "confidence": 0.7
-                })
+            # Check for YEAR OCR errors (e.g., 2013 instead of 2025, 2024 instead of 2025)
+            year_diff = published_date.year - deadline.year
+            if year_diff > 0 and year_diff <= 12:  # Years are reasonably close
+                # Try correcting the year to match publication year
+                try:
+                    corrected_deadline = deadline.replace(year=published_date.year)
+                    corrected_diff = (corrected_deadline - published_date).days
+                    
+                    # If corrected date makes sense (0-90 days after publication)
+                    if 0 <= corrected_diff <= 90:
+                        confidence = 0.95 if year_diff >= 2 else 0.85  # Higher confidence for bigger year gaps
+                        suggestions.append({
+                            "type": "year_ocr_error",
+                            "original": deadline.strftime("%Y-%m-%d"),
+                            "suggested": corrected_deadline.strftime("%Y-%m-%d"),
+                            "reason": f"OCR read year as '{deadline.year}' instead of '{published_date.year}'",
+                            "confidence": confidence
+                        })
+                except ValueError:
+                    pass  # Invalid date (e.g., Feb 29 in non-leap year)
             
-            # Check for expired tender (deadline > 30 days in past)
-            if abs_diff > 30:
+            # Check for single digit confusion (6 vs 16 vs 26) - only if year is same
+            if deadline.year == published_date.year:
+                if abs_diff == 10:
+                    # Could be 6 vs 16
+                    corrected_deadline = deadline + timedelta(days=10)
+                    suggestions.append({
+                        "type": "digit_confusion",
+                        "original": deadline.strftime("%Y-%m-%d"),
+                        "suggested": corrected_deadline.strftime("%Y-%m-%d"),
+                        "reason": "Possible OCR confusion: '6' vs '16' in date",
+                        "confidence": 0.8
+                    })
+                elif abs_diff == 20:
+                    # Could be 6 vs 26
+                    corrected_deadline = deadline + timedelta(days=20)
+                    suggestions.append({
+                        "type": "digit_confusion",
+                        "original": deadline.strftime("%Y-%m-%d"),
+                        "suggested": corrected_deadline.strftime("%Y-%m-%d"),
+                        "reason": "Possible OCR confusion: '6' vs '26' in date",
+                        "confidence": 0.7
+                    })
+            
+            # Check for expired tender (deadline > 30 days in past) - if no year error detected
+            if abs_diff > 30 and not any(s.get('type') == 'year_ocr_error' for s in suggestions):
                 suggestions.append({
                     "type": "expired_tender",
                     "reason": f"Deadline is {abs_diff} days before publication - likely expired/reposted tender",

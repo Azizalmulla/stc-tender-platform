@@ -44,78 +44,38 @@ class MistralAIService:
             # Encode image to base64
             image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
-            # Construct message for Mistral OCR
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": """أنت خبير متخصص في استخراج النصوص من مناقصات الكويت الرسمية (الجريدة الرسمية - كويت اليوم).
-
-## المهمة:
-استخرج جميع النصوص المرئية من هذه الصورة بدقة عالية.
-
-### التعليمات الحاسمة:
-1. **استخرج كل النص العربي بدقة 100%**
-   - احرص على قراءة كل كلمة وحرف بعناية
-   - انتبه للأرقام والتواريخ (لا تخلط بين "٦" و "١٦" و "٢٦")
-   - احتفظ بالتنسيق والهيكل الأصلي
-
-2. **الجهة/الوزارة:**
-   - إذا رأيت اسم الوزارة أو الجهة في أعلى الصفحة، استخرجه بالضبط
-   - أمثلة: "وزارة الأشغال العامة"، "شركة نفط الكويت"، "الهيئة العامة للصناعة"
-
-3. **الدقة:**
-   - لا تُلخص - استخرج النص الكامل كما هو
-   - نظف الأخطاء الإملائية الواضحة فقط
-   - إذا كان النص غير واضح، ضع confidence أقل
-
-### صيغة الإخراج (JSON):
-{{
-    "body": "النص الكامل المستخرج بالعربية",
-    "ministry": "اسم الوزارة/الجهة إن وجد" أو null,
-    "confidence": 0.0 إلى 1.0 (ثقتك في الاستخراج)
-}}
-
-**مهم:** استخرج النص كاملاً بدون تلخيص أو اختصار."""
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": f"data:image/{image_format};base64,{image_base64}"
-                        }
-                    ]
-                }
-            ]
-            
-            # Call Mistral OCR
-            response = self.client.chat.complete(
+            # Call Mistral OCR API (correct endpoint)
+            response = self.client.ocr.process(
                 model=self.ocr_model,
-                messages=messages,
-                temperature=0.0,  # Deterministic for OCR
-                max_tokens=4000
+                document={
+                    "type": "image_base64",
+                    "image_base64": image_base64
+                },
+                include_image_base64=False  # We don't need it back
             )
             
-            # Parse response
-            response_text = response.choices[0].message.content.strip()
-            
-            # Try to parse as JSON first
-            try:
-                result = json.loads(response_text)
+            # Extract text from response
+            # Response structure: response.pages[0].markdown
+            if response.pages and len(response.pages) > 0:
+                extracted_text = response.pages[0].markdown
+                
+                # Try to extract ministry from the beginning of text
+                ministry = None
+                lines = extracted_text.split('\n')
+                if lines:
+                    # First few lines often contain ministry name
+                    first_line = lines[0].strip().replace('#', '').strip()
+                    if len(first_line) > 5 and len(first_line) < 150:  # Reasonable ministry name length
+                        ministry = first_line
+                
                 return {
-                    "body": result.get("body", ""),
-                    "ministry": result.get("ministry"),
-                    "ocr_confidence": float(result.get("confidence", 0.8)),
+                    "body": extracted_text,
+                    "ministry": ministry,
+                    "ocr_confidence": 0.85,  # Mistral OCR is quite good
                     "success": True
                 }
-            except json.JSONDecodeError:
-                # If not JSON, treat entire response as extracted text
-                return {
-                    "body": response_text,
-                    "ministry": None,
-                    "ocr_confidence": 0.75,  # Default confidence
-                    "success": True
-                }
+            else:
+                raise ValueError("No pages found in OCR response")
         
         except Exception as e:
             print(f"❌ Mistral OCR error: {e}")

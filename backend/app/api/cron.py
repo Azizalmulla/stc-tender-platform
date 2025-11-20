@@ -224,21 +224,46 @@ def run_scrape_task():
                     tender_data.get('published_at')
                 )
                 
+                corrected_deadline = new_deadline  # Start with original
+                
                 if date_validation_result:
                     print(f"  📅 Date Validation: {date_validation_result.get('message', 'OK')}")
                     
-                    # Log issues
+                    # Auto-apply high-confidence corrections
                     if not date_validation_result.get('valid') and date_validation_result.get('valid') is not None:
                         print(f"  ⚠️  DATE ISSUE: {date_validation_result.get('issue')}")
                         
-                        # Log suggestions if available
+                        # Check suggestions and auto-apply if confidence >= 80%
                         for suggestion in date_validation_result.get('suggestions', []):
-                            print(f"  💡 Suggestion ({suggestion.get('confidence', 0):.0%} confidence):")
+                            confidence = suggestion.get('confidence', 0)
+                            print(f"  💡 Suggestion ({confidence:.0%} confidence):")
                             print(f"     Type: {suggestion.get('type')}")
                             print(f"     Reason: {suggestion.get('reason')}")
+                            
                             if 'suggested' in suggestion:
-                                print(f"     Suggested Date: {suggestion.get('suggested')}")
-                                print(f"     Original Date: {suggestion.get('original')}")
+                                suggested_date_str = suggestion.get('suggested')
+                                original_date_str = suggestion.get('original')
+                                print(f"     Suggested Date: {suggested_date_str}")
+                                print(f"     Original Date: {original_date_str}")
+                                
+                                # AUTO-APPLY high-confidence corrections (>= 80%)
+                                if confidence >= 0.80 and suggested_date_str:
+                                    try:
+                                        # Parse suggested date
+                                        from datetime import datetime as dt
+                                        corrected_deadline = dt.fromisoformat(suggested_date_str)
+                                        if corrected_deadline.tzinfo is None:
+                                            from datetime import timezone
+                                            corrected_deadline = corrected_deadline.replace(tzinfo=timezone.utc)
+                                        
+                                        print(f"  ✅ AUTO-CORRECTED: {original_date_str} → {suggested_date_str}")
+                                        print(f"     Reason: High confidence ({confidence:.0%}) correction applied")
+                                        break  # Apply first high-confidence suggestion only
+                                    except Exception as e:
+                                        print(f"  ⚠️  Failed to parse suggested date: {e}")
+                
+                # Use corrected deadline (either original or auto-corrected)
+                new_deadline = corrected_deadline
                 
                 # Create tender
                 tender = Tender(
