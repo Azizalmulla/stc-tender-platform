@@ -324,7 +324,7 @@ class KuwaitAlyomScraper:
             return None
         
         flip_url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
-        browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}"
+        browserless_url = f"https://production-sfo.browserless.io/screenshot?token={browserless_api_key}&ignoreHTTPSErrors=true"
         
         for attempt in range(max_retries + 1):
             try:
