@@ -39,7 +39,7 @@ pyarabic==0.6.15
 # AI & Embeddings
 openai==1.12.0
 anthropic==0.39.0  # Claude Sonnet 4.5 for summarization and extraction
-mistralai==1.9.11  # Mistral OCR for fast and accurate text extraction (latest version with OCR support)
+mistralai==1.2.5  # Mistral OCR for fast and accurate text extraction (compatible with our pydantic version)
 tiktoken==0.6.0
 
 # Date Processing
