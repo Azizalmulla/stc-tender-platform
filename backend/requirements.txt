@@ -39,7 +39,7 @@ pyarabic==0.6.15
 # AI & Embeddings
 openai==1.12.0
 anthropic==0.39.0  # Claude Sonnet 4.5 for summarization and extraction
-mistralai==1.2.5  # Mistral OCR for fast and accurate text extraction (compatible with our pydantic version)
+mistralai>=1.0.0,<2.0.0  # Mistral SDK v1 with OCR support (client.ocr.process)
 tiktoken==0.6.0
 
 # Date Processing
@@ -47,7 +47,7 @@ hijri-converter==2.3.1  # Hijri-Gregorian date conversion for Kuwait tenders
 
 # Utilities
 python-dotenv==1.0.1
-pydantic==2.12.4  # Updated for mistralai compatibility
+pydantic>=2.0.0  # Required for mistralai>=1.0
 pydantic-settings==2.1.0
 python-dateutil==2.8.2
 pytz==2024.1
