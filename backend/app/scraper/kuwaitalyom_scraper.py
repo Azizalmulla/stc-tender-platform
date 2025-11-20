@@ -1233,27 +1233,76 @@ STRUCTURED TEXT:"""
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[dict]:
         """
-        Extract text from image using Claude Sonnet 4.5 Vision
+        Extract text from image using Mistral OCR (primary) with Claude fallback
         
-        Replaces Google Document AI + GPT pipeline with single Claude call
-        for better OCR quality and structured extraction.
+        Uses tiered OCR approach:
+        1. Mistral OCR (fast, cheap, reliable) - Primary
+        2. Claude Sonnet 4.5 (premium quality) - Fallback
+        3. Old method (Google Document AI) - Last resort
         
         Args:
             image_bytes: Image bytes (PNG/JPEG)
             
         Returns:
-            Dict with {'text': str, 'ministry': str, 'meeting_date_text': str, 'meeting_location': str} if successful, None otherwise
+            Dict with {'text': str, 'ministry': str, ...} if successful, None otherwise
         """
         try:
             import os
             
-            # Check if Claude API is configured
+            # ============================================
+            # PRIMARY: Try Mistral OCR first
+            # ============================================
+            mistral_api_key = os.getenv('MISTRAL_API_KEY')
+            if mistral_api_key and mistral_api_key != 'paste-your-mistral-api-key-here':
+                try:
+                    print(f"  🚀 Using Mistral OCR for text extraction (primary)...")
+                    
+                    from app.ai.mistral_service import mistral_service
+                    
+                    if mistral_service:
+                        mistral_result = mistral_service.extract_text_from_image(
+                            image_bytes, 
+                            image_format="png"
+                        )
+                        
+                        # Check if Mistral OCR succeeded and extracted meaningful text
+                        if (mistral_result 
+                            and mistral_result.get('success') 
+                            and mistral_result.get('body') 
+                            and len(mistral_result.get('body', '')) > 50):  # Basic validation
+                            
+                            print(f"  ✅ Mistral OCR extracted {len(mistral_result['body'])} characters")
+                            print(f"  🏛️ Ministry: {mistral_result.get('ministry', 'N/A')}")
+                            print(f"  📊 Confidence: {mistral_result.get('ocr_confidence', 0.0)}")
+                            
+                            return {
+                                'text': mistral_result['body'],
+                                'ministry': mistral_result.get('ministry'),
+                                'meeting_date_text': None,  # Mistral OCR doesn't extract structured data
+                                'meeting_location': None,
+                                'tender_number': None,
+                                'deadline': None,
+                                'ocr_confidence': mistral_result.get('ocr_confidence', 0.75),
+                                'note': None,
+                                'ocr_method': 'mistral'
+                            }
+                        else:
+                            print(f"  ⚠️  Mistral OCR returned insufficient text, trying Claude fallback...")
+                            
+                except Exception as e:
+                    print(f"  ⚠️  Mistral OCR failed: {e}, trying Claude fallback...")
+            else:
+                print(f"  ⚠️  MISTRAL_API_KEY not configured, trying Claude...")
+            
+            # ============================================
+            # FALLBACK: Try Claude Sonnet 4.5
+            # ============================================
             claude_api_key = os.getenv('ANTHROPIC_API_KEY')
-            if not claude_api_key:
+            if not claude_api_key or claude_api_key == 'your-claude-api-key-here':
                 print(f"⚠️  ANTHROPIC_API_KEY not configured, falling back to old method")
                 return self._extract_text_from_image_old(image_bytes)
             
-            print(f"  🧠 Using Claude Sonnet 4.5 for OCR and extraction...")
+            print(f"  🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)...")
             
             # Import Claude service
             from app.ai.claude_service import claude_service
@@ -1278,7 +1327,8 @@ STRUCTURED TEXT:"""
                     'tender_number': result.get('tender_number'),
                     'deadline': result.get('deadline'),
                     'ocr_confidence': result.get('ocr_confidence', 0.5),
-                    'note': result.get('note')
+                    'note': result.get('note'),
+                    'ocr_method': 'claude'
                 }
             elif result and result.get('note'):
                 print(f"  ⚠️  Claude extraction note: {result['note']}")
@@ -1288,7 +1338,7 @@ STRUCTURED TEXT:"""
                 return None
                 
         except Exception as e:
-            print(f"  ❌ Claude extraction failed: {e}, falling back to old method")
+            print(f"  ❌ All OCR methods failed: {e}, falling back to old method")
             import traceback
             print(traceback.format_exc())
             # Fallback to old method

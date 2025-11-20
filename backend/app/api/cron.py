@@ -11,7 +11,8 @@ from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.openai_service import OpenAIService  # Only for embeddings
-from app.ai.claude_service import claude_service  # For summarization & extraction
+from app.ai.mistral_service import mistral_service  # Primary: Mistral for all AI tasks
+from app.ai.claude_service import claude_service  # Fallback: Claude if Mistral fails
 from app.parser.pdf_parser import TextNormalizer
 from app.utils.date_validator import date_validator  # Extreme date accuracy
 
@@ -110,27 +111,66 @@ def run_scrape_task():
                 if tender_data.get('language') == 'ar':
                     text = normalizer.normalize_arabic(text)
                 
-                # AI Processing with Claude Sonnet 4.5
-                print(f"  🧠 Using Claude for summarization and extraction...")
-                extracted = claude_service.extract_structured_data(text)
+                # ============================================
+                # AI Processing: Mistral (Primary) → Claude (Fallback)
+                # ============================================
                 
-                # Pre-validate dates before summarization
-                potential_date_issue = ""
-                if extracted.get('deadline') and tender_data.get('published_at'):
+                # Try Mistral first
+                extracted = None
+                summary_data = None
+                
+                if mistral_service:
                     try:
-                        from datetime import datetime as dt
-                        deadline_dt = dt.fromisoformat(extracted['deadline'].replace('Z', '+00:00')) if isinstance(extracted['deadline'], str) else extracted['deadline']
-                        published_dt = tender_data['published_at']
-                        if deadline_dt < published_dt:
-                            potential_date_issue = "\n\n⚠️ تحذير: الموعد النهائي قبل تاريخ النشر - قد يكون خطأ في التاريخ أو مناقصة منتهية"
-                    except:
-                        pass
+                        print(f"  🚀 Using Mistral Large for summarization and extraction (primary)...")
+                        
+                        # Structured extraction with Mistral
+                        extracted = mistral_service.extract_structured_data(text)
+                        
+                        # Summarization with Mistral
+                        if extracted and extracted.get('success'):
+                            summary_data = mistral_service.summarize_tender(
+                                full_text,
+                                tender_number=extracted.get('tender_number'),
+                                entity=extracted.get('ministry'),
+                                deadline=extracted.get('deadline')
+                            )
+                        
+                        # Check if both succeeded
+                        if extracted and extracted.get('success') and summary_data and summary_data.get('success'):
+                            print(f"  ✅ Mistral AI processing successful")
+                        else:
+                            print(f"  ⚠️  Mistral AI incomplete, falling back to Claude...")
+                            extracted = None
+                            summary_data = None
+                    
+                    except Exception as e:
+                        print(f"  ⚠️  Mistral AI failed: {e}, falling back to Claude...")
+                        extracted = None
+                        summary_data = None
                 
-                summary_data = claude_service.summarize_tender(
-                    tender_data.get('title', ''),
-                    full_text + potential_date_issue,  # Add date warning to text for Claude
-                    tender_data.get('language', 'ar')
-                )
+                # Fallback to Claude if Mistral failed
+                if not extracted or not summary_data:
+                    print(f"  🧠 Using Claude Sonnet 4.5 for summarization and extraction (fallback)...")
+                    extracted = claude_service.extract_structured_data(text)
+                    
+                    # Pre-validate dates before summarization
+                    potential_date_issue = ""
+                    if extracted.get('deadline') and tender_data.get('published_at'):
+                        try:
+                            from datetime import datetime as dt
+                            deadline_dt = dt.fromisoformat(extracted['deadline'].replace('Z', '+00:00')) if isinstance(extracted['deadline'], str) else extracted['deadline']
+                            published_dt = tender_data['published_at']
+                            if deadline_dt < published_dt:
+                                potential_date_issue = "\n\n⚠️ تحذير: الموعد النهائي قبل تاريخ النشر - قد يكون خطأ في التاريخ أو مناقصة منتهية"
+                        except:
+                            pass
+                    
+                    summary_data = claude_service.summarize_tender(
+                        tender_data.get('title', ''),
+                        full_text + potential_date_issue,
+                        tender_data.get('language', 'ar')
+                    )
+                
                 summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
                 
                 # OpenAI only for embeddings (Claude doesn't have embeddings API)
