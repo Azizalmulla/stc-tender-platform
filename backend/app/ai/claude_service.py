@@ -345,7 +345,10 @@ Generate a JSON response with:
 - For meetings: Only include if explicitly mentioned in tender
 - For entity: Use EXACT Arabic name from document (don't translate or change it)
 
-Generate the JSON now:""".format(title_text=title, body_text=body[:3000])
+Generate the JSON now:""".format(
+    title_text=title.replace('{', '{{').replace('}', '}}'),
+    body_text=body[:3000].replace('{', '{{').replace('}', '}}')
+)
         
         try:
             response = self.client.messages.create(
