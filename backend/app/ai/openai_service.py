@@ -167,8 +167,13 @@ Rules:
             Embedding vector (3072 dimensions for text-embedding-3-large)
         """
         try:
-            # Truncate if too long (max ~8000 tokens)
-            text = text[:30000]
+            # Truncate to stay under 8192 token limit
+            # Safe limit: ~24,000 chars (8000 tokens × 3 chars/token for Arabic)
+            # This ensures we never exceed the embedding model's token limit
+            max_chars = 24000
+            if len(text) > max_chars:
+                text = text[:max_chars]
+                print(f"  ℹ️  Truncated text from {len(text)} to {max_chars} chars for embedding")
             
             response = self.client.embeddings.create(
                 model=self.embedding_model,
