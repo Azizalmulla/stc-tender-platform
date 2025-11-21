@@ -404,18 +404,21 @@ Text:
 
 Extract these fields and return JSON:
 ```json
-{{
-  "ministry": "Exact ministry/entity name from document",
+{
+  "ministry": "Exact issuing organization name from document",
   "tender_number": "Exact tender/RFP/RFQ number",
   "deadline": "YYYY-MM-DD format",
   "document_price_kd": numeric value in KD,
   "category": "IT|Construction|Services|Healthcare|Infrastructure|Other"
-}}
+}
 ```
 
 **Rules:**
 - Use null for fields NOT found in the text
-- For ministry: Use EXACT Arabic name from document
+- For ministry: Extract the EXACT Arabic name of the issuing organization (ministry, company, authority, agency, or any entity)
+  * Examples: "وزارة الصحة", "شركة نفط الكويت", "الهيئة العامة للإسكان", "بنك الكويت الوطني"
+  * ALWAYS extract the entity name - it's RARE for this to be missing
+  * Only use null if absolutely NO organization name is mentioned
 - For deadline: Parse from Arabic or English dates
 - For category: Classify based on keywords in text
 - For document_price_kd: Extract numeric value only

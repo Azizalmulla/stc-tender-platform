@@ -97,11 +97,46 @@ def run_scrape_task():
                 description = tender_data.get('description', '')
                 
                 # Prepare text for AI (combine description + PDF content)
-                if pdf_text:
+                # Validate OCR text quality before using it
+                def is_valid_body_text(text):
+                    """Check if OCR text is valid content or pure garbage (only table structures)
+                    
+                    Important: Valid tenders CAN contain tables! Only reject if it's MOSTLY garbage.
+                    """
+                    if not text or len(text.strip()) < 100:
+                        return False
+                    
+                    # Calculate indicators
+                    pipe_ratio = text.count('|') / len(text) if len(text) > 0 else 0
+                    digit_ratio = sum(c.isdigit() for c in text) / len(text) if len(text) > 0 else 0
+                    
+                    # Check for actual Arabic/English content
+                    arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+                    english_chars = sum(1 for c in text if c.isalpha() and c.isascii())
+                    content_ratio = (arabic_chars + english_chars) / len(text) if len(text) > 0 else 0
+                    
+                    # Only reject if it's MOSTLY garbage (very strict criteria)
+                    # A valid tender with tables will still have decent text content
+                    if pipe_ratio > 0.15:  # More than 15% pipes = pure table structure
+                        return False
+                    if digit_ratio > 0.6:  # More than 60% digits = pure page numbers
+                        return False
+                    if content_ratio < 0.15:  # Less than 15% actual text = pure garbage
+                        return False
+                    
+                    return True
+                
+                if pdf_text and is_valid_body_text(pdf_text):
                     print(f"  ✅ Using OCR extracted text ({len(pdf_text)} characters)")
                     # Use PDF text as main body, description as summary
                     full_text = f"{description}\n\n{pdf_text[:50000]}"  # Limit to 50K chars
                     body_text = pdf_text[:100000]  # Store up to 100K chars
+                elif pdf_text:
+                    print(f"  ⚠️  OCR text quality check FAILED (table structures/garbage detected)")
+                    print(f"     - Pipe ratio: {pdf_text.count('|') / len(pdf_text):.2%}")
+                    print(f"     - Using description as fallback")
+                    full_text = description
+                    body_text = description
                 else:
                     print(f"  ⚠️  No PDF text available, using metadata only")
                     full_text = description
@@ -265,6 +300,49 @@ def run_scrape_task():
                 # Use corrected deadline (either original or auto-corrected)
                 new_deadline = corrected_deadline
                 
+                # Clean ministry extraction: prioritize Claude over scraper, filter junk
+                def is_valid_ministry(ministry_name):
+                    """Filter out JUNK ministry names, but allow None/empty (valid for private sector)
+                    
+                    Note: Kuwait Al-Yawm publishes tenders from:
+                    - Government ministries (وزارة...)
+                    - Government companies (شركة...)
+                    - Private companies (valid!)
+                    - Authorities/Agencies (الهيئة، الإدارة...)
+                    
+                    So None/empty is VALID - only filter obvious garbage.
+                    """
+                    # None or empty is VALID (private sector, or AI couldn't extract)
+                    if not ministry_name:
+                        return True  # ✅ Allow None/empty
+                    
+                    # If something IS provided, validate it's not garbage
+                    ministry_name = ministry_name.strip()
+                    
+                    # Too short after stripping = probably garbage
+                    if len(ministry_name) < 3:
+                        return False
+                    
+                    # Filter out pipe-heavy strings (table structures)
+                    if ministry_name.count('|') > 3:
+                        return False
+                    
+                    # Filter out number-heavy strings (page numbers)
+                    digit_ratio = sum(c.isdigit() for c in ministry_name) / len(ministry_name)
+                    if digit_ratio > 0.5:
+                        return False
+                    
+                    # Filter out gazette headers
+                    if 'الكويت اليوم' in ministry_name or 'كويت اليوم' in ministry_name or 'العدد' in ministry_name:
+                        return False
+                    
+                    return True  # ✅ Accept anything else
+                
+                # Prioritize Claude extraction, fallback to scraper if needed
+                ministry = extracted.get('ministry') if extracted else None
+                if not is_valid_ministry(ministry):
+                    ministry = tender_data.get('ministry') if is_valid_ministry(tender_data.get('ministry')) else None
+                
                 # Create tender
                 tender = Tender(
                     title=tender_data['title'],
@@ -272,7 +350,7 @@ def run_scrape_task():
                     url=tender_data['url'],
                     published_at=tender_data['published_at'],
                     deadline=new_deadline,
-                    ministry=tender_data.get('ministry', extracted.get('ministry')),
+                    ministry=ministry,
                     category=tender_data.get('category'),
                     body=body_text,  # Now contains full PDF text or description
                     summary_ar=summary if tender_data.get('language') == 'ar' else summary_data.get('summary_ar', ''),

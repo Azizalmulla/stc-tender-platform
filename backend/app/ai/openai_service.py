@@ -168,12 +168,14 @@ Rules:
         """
         try:
             # Truncate to stay under 8192 token limit
-            # Safe limit: ~24,000 chars (8000 tokens × 3 chars/token for Arabic)
-            # This ensures we never exceed the embedding model's token limit
-            max_chars = 24000
-            if len(text) > max_chars:
+            # Based on actual testing: Arabic tender text averages ~1.74 chars/token
+            # Safe limit: 8192 tokens × 1.5 chars/token = 12,288 chars
+            # Use 12,000 to maintain safety buffer
+            max_chars = 12000
+            original_length = len(text)
+            if original_length > max_chars:
                 text = text[:max_chars]
-                print(f"  ℹ️  Truncated text from {len(text)} to {max_chars} chars for embedding")
+                print(f"  ℹ️  Truncated text from {original_length} to {max_chars} chars for embedding")
             
             response = self.client.embeddings.create(
                 model=self.embedding_model,
