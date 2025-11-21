@@ -14,14 +14,17 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
     
-    # OpenAI
-    OPENAI_API_KEY: str
+    # OpenAI (DEPRECATED - Replaced by Voyage AI for embeddings)
+    OPENAI_API_KEY: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
     
-    # Anthropic Claude (for summarization and extraction)
+    # Anthropic Claude (for OCR, summarization, and structured extraction)
     ANTHROPIC_API_KEY: Optional[str] = None
     CLAUDE_MODEL: str = "claude-sonnet-4-5-20250929"  # Latest Claude Sonnet 4.5 (correct name)
+    
+    # Voyage AI (for embeddings - voyage-law-2 optimized for legal documents)
+    VOYAGE_API_KEY: Optional[str] = None
     
     # Mistral AI (DEPRECATED - No longer used. Kept for backwards compatibility only)
     MISTRAL_API_KEY: Optional[str] = None
@@ -52,7 +55,7 @@ class Settings(BaseSettings):
     TEMPERATURE: float = 0.3
     
     # Embeddings
-    EMBEDDING_DIMENSION: int = 1536  # text-embedding-3-small (Neon pgvector limit: 2000)
+    EMBEDDING_DIMENSION: int = 1024  # Voyage AI voyage-law-2 (legal document optimization)
     
     # Search
     SIMILARITY_THRESHOLD: float = 0.7

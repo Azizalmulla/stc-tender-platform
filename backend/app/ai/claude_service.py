@@ -458,6 +458,177 @@ Extract these fields and return JSON:
                 "document_price_kd": None,
                 "category": None
             }
+    
+    def answer_question(self, question: str, context_docs: List[Dict], conversation_history: List[Dict] = None) -> Dict:
+        """
+        Answer questions about tenders using Claude Sonnet 4.5 with RAG
+        
+        Args:
+            question: User question in Arabic or English
+            context_docs: List of relevant tender documents
+            conversation_history: Previous conversation messages (optional)
+            
+        Returns:
+            Dict with answer_ar, answer_en, citations, confidence
+        """
+        # Build context from documents
+        context = "\n\n---\n\n".join([
+            f"رقم المناقصة / Tender Number: {doc.get('tender_number', 'N/A')}\n"
+            f"العنوان / Title: {doc['title']}\n"
+            f"الجهة / Ministry: {doc.get('ministry', 'N/A')}\n"
+            f"التصنيف / Category: {doc.get('category', 'N/A')}\n"
+            f"تاريخ النشر / Published: {doc.get('published_at', 'N/A')}\n"
+            f"الموعد النهائي / Deadline: {doc.get('deadline', 'N/A')}\n"
+            f"سعر الوثائق / Document Price: {doc.get('document_price_kd', 'N/A')} KD\n"
+            f"موعد الاجتماع / Meeting Date: {doc.get('meeting_date', 'N/A')}\n"
+            f"مكان الاجتماع / Meeting Location: {doc.get('meeting_location', 'N/A')}\n"
+            f"مؤجل / Postponed: {'نعم / Yes' if doc.get('is_postponed') else 'لا / No'}\n"
+            f"الموعد الأصلي / Original Deadline: {doc.get('original_deadline', 'N/A')}\n"
+            f"سبب التأجيل / Postponement Reason: {doc.get('postponement_reason', 'N/A')}\n"
+            f"الملخص العربي / Arabic Summary: {doc.get('summary_ar', 'N/A')[:500]}\n"
+            f"الملخص الإنجليزي / English Summary: {doc.get('summary_en', 'N/A')[:500]}\n"
+            f"الحقائق الرئيسية / Key Facts: {', '.join(doc.get('facts_ar', [])[:5]) if doc.get('facts_ar') else 'N/A'}\n"
+            f"النص الكامل / Full Text: {(doc.get('body', '') or 'N/A')[:3000]}\n"
+            f"الرابط / URL: {doc['url']}"
+            for doc in context_docs[:10]
+        ])
+        
+        # Build conversation context
+        conversation_context = ""
+        if conversation_history:
+            conversation_context = "\n\n**المحادثة السابقة / Previous Conversation:**\n" + "\n".join([
+                f"{msg['role'].capitalize()}: {msg['content']}"
+                for msg in conversation_history[-6:]
+            ])
+        
+        prompt = f"""أنت مساعد خبير في مناقصات الحكومة الكويتية من جريدة كويت اليوم الرسمية.
+You are an expert assistant for Kuwait government tenders from Kuwait Al-Yawm Official Gazette.
+
+**التعليمات / INSTRUCTIONS:**
+1. أجب فقط باستخدام الوثائق المقدمة - لا تخترع معلومات
+   Answer ONLY using the provided context documents - never invent information
+2. استخدم تاريخ المحادثة لفهم الأسئلة التالية
+   Use conversation history for follow-up questions context
+3. لاستعلامات المواعيد: استخدم حقل الموعد النهائي وقارنه باليوم
+   For deadline queries: Use the Deadline field and compare to today
+4. لاستعلامات الجهات: اذكر اسم الجهة بوضوح من السياق
+   For ministry queries: Clearly state the ministry name from context
+5. دائماً اذكر المصادر مع روابط [المصدر]
+   Always cite sources with [Source] links
+6. إذا وجدت عدة مناقصات، اذكرها برقم
+   If multiple tenders match, list them with numbers
+7. ضمّن التفاصيل المهمة: رقم المناقصة، الجهة، الموعد النهائي
+   Include key details: Tender number, Ministry, Deadline
+8. كن موجزاً لكن شاملاً
+   Be concise but comprehensive
+
+**صيغة الرد / OUTPUT FORMAT:**
+
+لمناقصة واحدة / For single tender:
+---
+**المناقصة / Tender: [Tender Number or Title]**
+
+• الجهة / Ministry: [ministry name]
+• الموعد النهائي / Deadline: [deadline or "غير محدد / Not specified"]
+• التصنيف / Category: [category]
+• التفاصيل / Details: [brief summary]
+
+[عرض التفاصيل الكاملة / View Full Details]([url])
+---
+
+لعدة مناقصات / For multiple tenders:
+---
+وجدت [N] مناقصة / Found [N] tenders:
+
+**1. [Tender Number]**
+   • الجهة / Ministry: [ministry]
+   • الموعد النهائي / Deadline: [deadline]
+   • [ملخص موجز / Brief summary]
+   [الرابط / Link]([url])
+
+**2. [Tender Number]**
+   (نفس التنسيق / same format)
+---
+
+**الوثائق / Context Documents:**
+{context}
+{conversation_context}
+
+**قواعد الجودة / QUALITY RULES:**
+- إذا كان السياق غير كافٍ: قل "لم أجد تفاصيل كافية" / "I need more details"
+- إذا لم تتطابق المناقصات: اشرح السبب واقترح بدائل
+  If no tenders match: explain why and suggest alternatives
+- درجة الثقة / Confidence: 0.9+ للتطابق التام، 0.7-0.9 للتطابق الجيد، 0.5-0.7 للتطابق الضعيف
+  0.9+ for exact matches, 0.7-0.9 for good matches, 0.5-0.7 for weak matches
+
+**ثنائي اللغة / MULTILINGUAL:**
+- اكتشف لغة السؤال وأجب بالعربية والإنجليزية
+  Detect question language and respond in BOTH Arabic and English
+- إذا كان السؤال بالعربية → إجابة مفصلة بالعربية + ملخص موجز بالإنجليزية
+  If Arabic question → detailed Arabic + brief English summary
+- إذا كان السؤال بالإنجليزية → إجابة مفصلة بالإنجليزية + ملخص موجز بالعربية
+  If English question → detailed English + brief Arabic summary
+
+**السؤال / Question:**
+{question}
+
+أرجع JSON بهذا التنسيق / Return JSON in this format:
+{{
+  "answer_ar": "إجابة مفصلة بالعربية مع ذكر التفاصيل المهمة والروابط",
+  "answer_en": "Detailed English answer with important details and links",
+  "citations": [{{"url": "...", "title": "...", "published_at": "..."}}],
+  "confidence": 0.85
+}}
+"""
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                temperature=0.3,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            
+            response_text = response.content[0].text
+            
+            # Parse JSON from response
+            import json
+            start_idx = response_text.find('{')
+            end_idx = response_text.rfind('}') + 1
+            
+            if start_idx == -1 or end_idx == 0:
+                raise ValueError("No JSON found in Claude response")
+            
+            json_str = response_text[start_idx:end_idx]
+            result = json.loads(json_str)
+            
+            return {
+                "answer_ar": result.get("answer_ar", "لم أجد إجابة"),
+                "answer_en": result.get("answer_en", "No answer found"),
+                "citations": result.get("citations", []),
+                "confidence": result.get("confidence", 0.5)
+            }
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON parsing error in Claude Q&A: {e}")
+            print(f"Claude response: {response_text[:500]}")
+            return {
+                "answer_ar": "عذراً، حدث خطأ في معالجة البيانات.",
+                "answer_en": "Sorry, a data processing error occurred.",
+                "citations": [],
+                "confidence": 0.3
+            }
+        except Exception as e:
+            print(f"❌ Claude Q&A error: {e}")
+            return {
+                "answer_ar": "عذراً، حدث خطأ أثناء معالجة سؤالك. يرجى المحاولة مرة أخرى.",
+                "answer_en": "Sorry, an error occurred while processing your question. Please try again.",
+                "citations": [],
+                "confidence": 0.0
+            }
 
 
 # Singleton instance

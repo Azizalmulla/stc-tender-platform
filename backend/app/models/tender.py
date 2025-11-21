@@ -49,7 +49,7 @@ class TenderEmbedding(Base):
     __tablename__ = "tender_embeddings"
     
     tender_id = Column(BigInteger, ForeignKey("tenders.id", ondelete="CASCADE"), primary_key=True)
-    embedding = Column(Vector(1536))  # text-embedding-3-small dimension
+    embedding = Column(Vector(1024))  # Voyage AI voyage-law-2 dimension
     
     __table_args__ = (
         Index('idx_tender_embeddings_vector', 'embedding', postgresql_using='ivfflat'),

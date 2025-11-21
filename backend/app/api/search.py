@@ -5,7 +5,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.db.session import get_db
 from app.models.tender import Tender, TenderEmbedding
-from app.ai.openai_service import OpenAIService
+from app.ai.voyage_service import voyage_service
 from app.parser.pdf_parser import TextNormalizer
 
 
@@ -142,10 +142,12 @@ async def semantic_search(
     
     Supports natural language queries in Arabic or English
     """
-    ai_service = OpenAIService()
-    
-    # Generate query embedding
-    query_embedding = ai_service.generate_embedding(q)
+    # Generate query embedding with Voyage AI
+    # Using input_type="query" for optimal search/retrieval performance
+    query_embedding = voyage_service.generate_embedding(
+        q,
+        input_type="query"  # Optimized for search queries
+    )
     
     # Perform vector similarity search using pgvector
     results = db.query(
@@ -188,7 +190,6 @@ async def hybrid_search(
     Returns unified results with relevance scores
     Handles Arabic spelling variations
     """
-    ai_service = OpenAIService()
     
     # 1. Keyword search with normalization
     normalized_q = normalize_arabic_search(q)
@@ -208,8 +209,11 @@ async def hybrid_search(
         or_(*search_conditions)
     ).limit(limit).all()
     
-    # 2. Semantic search
-    query_embedding = ai_service.generate_embedding(q)
+    # 2. Semantic search with Voyage AI
+    query_embedding = voyage_service.generate_embedding(
+        q,
+        input_type="query"  # Optimized for search queries
+    )
     
     semantic_results = db.query(
         Tender,

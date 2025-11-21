@@ -37,9 +37,8 @@ camel-tools==1.5.7
 pyarabic==0.6.15
 
 # AI & Embeddings
-openai==1.12.0
-anthropic==0.39.0  # Claude Sonnet 4.5 for OCR, summarization, and structured extraction
-tiktoken==0.6.0
+anthropic==0.39.0  # Claude Sonnet 4.5 for OCR, summarization, extraction, and Q&A
+voyageai>=0.2.0  # Voyage AI for embeddings (voyage-law-2 optimized for legal documents)
 
 # Date Processing
 hijri-converter==2.3.1  # Hijri-Gregorian date conversion for Kuwait tenders

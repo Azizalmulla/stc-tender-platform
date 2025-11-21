@@ -10,7 +10,7 @@ from app.core.config import settings
 from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
-from app.ai.openai_service import OpenAIService  # Only for embeddings
+from app.ai.voyage_service import voyage_service  # Voyage AI for embeddings (voyage-law-2)
 from app.ai.claude_service import claude_service  # Claude Sonnet 4.5 for all AI tasks
 from app.parser.pdf_parser import TextNormalizer
 from app.utils.date_validator import date_validator  # Extreme date accuracy
@@ -71,7 +71,6 @@ def run_scrape_task():
         
         # Process and import
         db = SessionLocal()
-        ai_service = OpenAIService()
         normalizer = TextNormalizer()
         
         processed = 0
@@ -194,8 +193,11 @@ def run_scrape_task():
                 
                 summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
                 
-                # OpenAI only for embeddings (Claude doesn't have embeddings API)
-                embedding = ai_service.generate_embedding(text)
+                # Voyage AI for embeddings (voyage-law-2 optimized for legal documents)
+                embedding = voyage_service.generate_embedding(
+                    text,
+                    input_type="document"  # Tenders are documents being stored
+                )
                 
                 # Check for postponement
                 new_deadline = extracted.get('deadline')
@@ -614,10 +616,8 @@ async def generate_embeddings(authorization: Optional[str] = Header(None)):
     try:
         from app.db.session import SessionLocal
         from app.models.tender import TenderEmbedding
-        from app.ai.openai_service import OpenAIService
         
         db = SessionLocal()
-        ai_service = OpenAIService()
         
         # Get all tenders without embeddings
         tenders_without_embeddings = db.query(Tender).outerjoin(
@@ -643,8 +643,11 @@ async def generate_embeddings(authorization: Optional[str] = Header(None)):
                 # Generate text for embedding
                 text = f"{tender.title or ''} {tender.summary_ar or ''} {tender.summary_en or ''} {tender.ministry or ''}"
                 
-                # Generate embedding
-                embedding = ai_service.generate_embedding(text)
+                # Generate embedding with Voyage AI
+                embedding = voyage_service.generate_embedding(
+                    text,
+                    input_type="document"
+                )
                 
                 # Create embedding record
                 tender_embedding = TenderEmbedding(

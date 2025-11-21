@@ -6,7 +6,8 @@ import uuid
 from app.db.session import get_db
 from app.models.tender import Tender, TenderEmbedding
 from app.models.conversation import Conversation, Message
-from app.ai.openai_service import OpenAIService
+from app.ai.claude_service import claude_service
+from app.ai.voyage_service import voyage_service
 
 
 router = APIRouter()
@@ -175,8 +176,6 @@ async def ask_question(
         for msg in messages[:-1]  # Exclude the just-added user message
     ]
     
-    ai_service = OpenAIService()
-    
     # 4. Smart query routing - detect specific query patterns
     question_lower = request.question.lower()
     from datetime import datetime, timedelta
@@ -219,8 +218,8 @@ async def ask_question(
                 "postponement_reason": exact_tender.postponement_reason
             }]
             
-            # Generate answer using exact match
-            answer_result = ai_service.answer_question(
+            # Generate answer using Claude with exact match
+            answer_result = claude_service.answer_question(
                 request.question, 
                 context_docs,
                 conversation_history=conversation_history
@@ -290,8 +289,11 @@ async def ask_question(
             session_id=session_id
         )
     
-    # Base query with embedding for RAG
-    question_embedding = ai_service.generate_embedding(request.question)
+    # Base query with Voyage embedding for RAG
+    question_embedding = voyage_service.generate_embedding(
+        request.question,
+        input_type="query"  # Optimized for search queries
+    )
     base_query = db.query(
         Tender,
         TenderEmbedding.embedding.cosine_distance(question_embedding).label('distance')
@@ -383,9 +385,9 @@ async def ask_question(
         for tender, distance in results
     ]
     
-    # 7. Generate answer using GPT with context and conversation history
+    # 7. Generate answer using Claude with context and conversation history
     try:
-        answer_result = ai_service.answer_question(
+        answer_result = claude_service.answer_question(
             request.question, 
             context_docs,
             conversation_history=conversation_history
