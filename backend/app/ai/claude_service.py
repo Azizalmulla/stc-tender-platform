@@ -291,12 +291,13 @@ class ClaudeOCRService:
         Returns:
             Dict with summary_ar, summary_en, facts_ar, facts_en
         """
-        prompt = f"""You are an Arabic tender extraction assistant analyzing Kuwait Al-Yawm government tenders.
+        # Use .format() instead of f-string to avoid issues with curly braces in body text
+        prompt = """You are an Arabic tender extraction assistant analyzing Kuwait Al-Yawm government tenders.
 
 **CRITICAL: Extract information ONLY from the provided text. NEVER fabricate or hallucinate information.**
 
-Title: {title}
-Body: {body[:3000]}
+Title: {title_text}
+Body: {body_text}
 
 Generate a JSON response with:
 1. **summary_ar**: Arabic summary in 2 lines (max 200 characters)
@@ -344,7 +345,7 @@ Generate a JSON response with:
 - For meetings: Only include if explicitly mentioned in tender
 - For entity: Use EXACT Arabic name from document (don't translate or change it)
 
-Generate the JSON now:"""
+Generate the JSON now:""".format(title_text=title, body_text=body[:3000])
         
         try:
             response = self.client.messages.create(

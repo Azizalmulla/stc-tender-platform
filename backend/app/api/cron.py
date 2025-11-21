@@ -11,8 +11,7 @@ from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.openai_service import OpenAIService  # Only for embeddings
-from app.ai.mistral_service import mistral_service  # Primary: Mistral for all AI tasks
-from app.ai.claude_service import claude_service  # Fallback: Claude if Mistral fails
+from app.ai.claude_service import claude_service  # Claude Sonnet 4.5 for all AI tasks
 from app.parser.pdf_parser import TextNormalizer
 from app.utils.date_validator import date_validator  # Extreme date accuracy
 
@@ -147,16 +146,16 @@ def run_scrape_task():
                     text = normalizer.normalize_arabic(text)
                 
                 # ============================================
-                # SMART HYBRID: Claude Reasoning (Primary) → Mistral (Fallback)
-                # Note: Mistral OCR is still primary for text extraction (in scraper)
+                # Claude Sonnet 4.5 for ALL AI Processing
+                # OCR, Extraction, Summarization - Single Model for Quality & Consistency
                 # ============================================
                 
-                # Try Claude first for summarization & extraction (more reliable for critical data)
+                # Use Claude for summarization & extraction
                 extracted = None
                 summary_data = None
                 
                 try:
-                    print(f"  🧠 Using Claude Sonnet 4.5 for summarization and extraction (primary)...")
+                    print(f"  🧠 Using Claude Sonnet 4.5 for summarization and extraction...")
                     
                     # Structured extraction with Claude
                     extracted = claude_service.extract_structured_data(text)
@@ -183,32 +182,15 @@ def run_scrape_task():
                     print(f"  ✅ Claude AI processing successful")
                 
                 except Exception as e:
-                    print(f"  ⚠️  Claude failed: {e}, falling back to Mistral...")
+                    print(f"  ❌ Claude processing failed: {e}")
+                    print(f"  ⚠️  Skipping tender due to AI processing failure")
                     extracted = None
                     summary_data = None
                 
-                # Fallback to Mistral if Claude failed
-                if (not extracted or not summary_data) and mistral_service:
-                    try:
-                        print(f"  🚀 Using Mistral Large for summarization and extraction (fallback)...")
-                        
-                        # Structured extraction with Mistral
-                        extracted = mistral_service.extract_structured_data(text)
-                        
-                        # Summarization with Mistral
-                        if extracted and extracted.get('success'):
-                            summary_data = mistral_service.summarize_tender(
-                                full_text,
-                                tender_number=extracted.get('tender_number'),
-                                entity=extracted.get('ministry'),
-                                deadline=extracted.get('deadline')
-                            )
-                        
-                        if extracted and extracted.get('success') and summary_data and summary_data.get('success'):
-                            print(f"  ✅ Mistral AI processing successful")
-                    
-                    except Exception as e:
-                        print(f"  ❌ Mistral also failed: {e}")
+                # If Claude failed, skip this tender (no fallback)
+                if not extracted or not summary_data:
+                    print(f"  ⚠️  Skipping tender - no valid AI extraction available")
+                    continue
                 
                 summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
                 

@@ -1250,87 +1250,14 @@ STRUCTURED TEXT:"""
             import os
             
             # ============================================
-            # PRIMARY: Try Mistral OCR first
-            # ============================================
-            mistral_api_key = os.getenv('MISTRAL_API_KEY')
-            if mistral_api_key and mistral_api_key != 'paste-your-mistral-api-key-here':
-                try:
-                    print(f"  🚀 Using Mistral OCR for text extraction (primary)...")
-                    
-                    from app.ai.mistral_service import mistral_service
-                    
-                    if mistral_service:
-                        mistral_result = mistral_service.extract_text_from_image(
-                            image_bytes, 
-                            image_format="png"
-                        )
-                        
-                        # Validate OCR text quality
-                        def is_quality_ocr_text(text):
-                            """Check if OCR text is quality content, not pure garbage
-                            
-                            Important: Valid tenders CAN have tables! Only reject MOSTLY garbage.
-                            """
-                            if not text or len(text.strip()) < 100:
-                                return False
-                            
-                            pipe_ratio = text.count('|') / len(text)
-                            digit_ratio = sum(c.isdigit() for c in text) / len(text)
-                            arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
-                            english_chars = sum(1 for c in text if c.isalpha() and c.isascii())
-                            content_ratio = (arabic_chars + english_chars) / len(text) if len(text) > 0 else 0
-                            
-                            # Reject only if MOSTLY garbage (relaxed thresholds)
-                            if pipe_ratio > 0.15 or digit_ratio > 0.6 or content_ratio < 0.15:
-                                return False
-                            return True
-                        
-                        # Check if Mistral OCR succeeded and extracted meaningful text
-                        ocr_body = mistral_result.get('body', '')
-                        if (mistral_result 
-                            and mistral_result.get('success') 
-                            and ocr_body
-                            and len(ocr_body) > 50
-                            and is_quality_ocr_text(ocr_body)):  # Quality validation
-                            
-                            print(f"  ✅ Mistral OCR extracted {len(ocr_body)} characters (quality validated)")
-                            print(f"  🏛️ Ministry: {mistral_result.get('ministry', 'N/A')}")
-                            print(f"  📊 Confidence: {mistral_result.get('ocr_confidence', 0.0)}")
-                            
-                            return {
-                                'text': mistral_result['body'],
-                                'ministry': mistral_result.get('ministry'),
-                                'meeting_date_text': None,  # Mistral OCR doesn't extract structured data
-                                'meeting_location': None,
-                                'tender_number': None,
-                                'deadline': None,
-                                'ocr_confidence': mistral_result.get('ocr_confidence', 0.75),
-                                'note': None,
-                                'ocr_method': 'mistral'
-                            }
-                        elif ocr_body and len(ocr_body) > 50:
-                            # Text exists but failed quality check
-                            pipe_ratio = ocr_body.count('|') / len(ocr_body)
-                            print(f"  ⚠️  Mistral OCR quality check FAILED (table structures detected)")
-                            print(f"     - Length: {len(ocr_body)} chars, Pipe ratio: {pipe_ratio:.2%}")
-                            print(f"     - Falling back to Claude OCR for better quality...")
-                        else:
-                            print(f"  ⚠️  Mistral OCR returned insufficient text, trying Claude fallback...")
-                            
-                except Exception as e:
-                    print(f"  ⚠️  Mistral OCR failed: {e}, trying Claude fallback...")
-            else:
-                print(f"  ⚠️  MISTRAL_API_KEY not configured, trying Claude...")
-            
-            # ============================================
-            # FALLBACK: Try Claude Sonnet 4.5
+            # Claude Sonnet 4.5 OCR (Primary & Only)
             # ============================================
             claude_api_key = os.getenv('ANTHROPIC_API_KEY')
             if not claude_api_key or claude_api_key == 'your-claude-api-key-here':
                 print(f"⚠️  ANTHROPIC_API_KEY not configured, falling back to old method")
                 return self._extract_text_from_image_old(image_bytes)
             
-            print(f"  🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)...")
+            print(f"  🧠 Using Claude Sonnet 4.5 for OCR and extraction...")
             
             # Import Claude service
             from app.ai.claude_service import claude_service
