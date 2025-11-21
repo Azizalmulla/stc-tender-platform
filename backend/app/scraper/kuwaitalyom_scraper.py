@@ -1233,12 +1233,11 @@ STRUCTURED TEXT:"""
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[dict]:
         """
-        Extract text from image using Mistral OCR (primary) with Claude fallback
+        Extract text from image using Claude Sonnet 4.5 OCR
         
-        Uses tiered OCR approach:
-        1. Mistral OCR (fast, cheap, reliable) - Primary
-        2. Claude Sonnet 4.5 (premium quality) - Fallback
-        3. Old method (Google Document AI) - Last resort
+        OCR approach:
+        1. Claude Sonnet 4.5 (premium quality, 100% success rate) - Primary
+        2. Old method (Google Document AI) - Fallback only if Claude unavailable
         
         Args:
             image_bytes: Image bytes (PNG/JPEG)

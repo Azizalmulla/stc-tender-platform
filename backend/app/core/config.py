@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     CLAUDE_MODEL: str = "claude-sonnet-4-5-20250929"  # Latest Claude Sonnet 4.5 (correct name)
     
-    # Mistral AI (for OCR - primary method)
+    # Mistral AI (DEPRECATED - No longer used. Kept for backwards compatibility only)
     MISTRAL_API_KEY: Optional[str] = None
     
     # Google Cloud Document AI
