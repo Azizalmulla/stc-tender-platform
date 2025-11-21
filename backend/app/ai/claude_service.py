@@ -4,7 +4,7 @@ Replaces Google Document AI + GPT pipeline with single Claude call
 """
 import base64
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from anthropic import Anthropic
 from app.core.config import settings
 
