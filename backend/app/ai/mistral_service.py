@@ -44,12 +44,15 @@ class MistralAIService:
             # Encode image to base64
             image_base64 = base64.b64encode(image_bytes).decode('utf-8')
             
-            # Call Mistral OCR API (correct endpoint)
+            # Create data URI (format required by Mistral SDK v1)
+            data_uri = f"data:image/{image_format};base64,{image_base64}"
+            
+            # Call Mistral OCR API (correct endpoint and format from official cookbook)
             response = self.client.ocr.process(
                 model=self.ocr_model,
                 document={
-                    "type": "image_base64",
-                    "image_base64": image_base64
+                    "type": "image_url",
+                    "image_url": data_uri
                 },
                 include_image_base64=False  # We don't need it back
             )
