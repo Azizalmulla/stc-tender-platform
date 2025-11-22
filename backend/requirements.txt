@@ -28,16 +28,17 @@ Pillow==10.2.0
 opencv-python-headless==4.9.0.80  # Image pre-processing for OCR
 numpy==1.26.3  # Required by opencv
 
-# OCR
-google-cloud-documentai==2.26.0
-pytesseract==0.3.10
+# OCR (DEPRECATED - No longer using Google or Tesseract)
+# google-cloud-documentai==2.26.0  # Removed - using Mistral + Claude instead
+# pytesseract==0.3.10  # Removed - not needed
 
 # Arabic NLP
 camel-tools==1.5.7
 pyarabic==0.6.15
 
 # AI & Embeddings
-anthropic==0.39.0  # Claude Sonnet 4.5 for OCR, summarization, extraction, and Q&A
+mistralai==1.2.0  # Mistral OCR (primary OCR engine for images and PDFs)
+anthropic==0.39.0  # Claude Sonnet 4.5 for OCR fallback, summarization, extraction, and Q&A
 voyageai>=0.2.0  # Voyage AI for embeddings (voyage-law-2 optimized for legal documents)
 
 # Date Processing
