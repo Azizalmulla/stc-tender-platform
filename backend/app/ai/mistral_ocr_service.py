@@ -20,7 +20,7 @@ class MistralOCRService:
 
         self.api_key = api_key
         self.client = Mistral(api_key=api_key)
-        self.ocr_model = "pixtral-12b-2409"
+        self.ocr_model = "mistral-ocr-latest"
 
     def _encode_to_data_url(self, content: bytes, mime_type: str) -> str:
         """Encode bytes to base64 data URL."""
