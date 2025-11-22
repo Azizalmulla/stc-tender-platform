@@ -1104,140 +1104,13 @@ STRUCTURED TEXT:"""
         
         return validation
     
-    def _extract_tender_with_new_pipeline(self, edition_id: int, page_number: int) -> Optional[dict]:
-        """
-        NEW PRODUCTION-QUALITY PIPELINE: Extract tender using PDF images + multi-stage cleanup
-        
-        This is the complete pipeline that gives 90-95% accuracy:
-        1. Download PDF
-        2. Extract high-res image from PDF (better than screenshot)
-        3. Image pre-processing (grayscale, denoise, sharpen)
-        4. Google Document AI OCR (85-90% accurate)
-        5. GPT-4o text cleanup with few-shot examples
-        6. Structured field extraction with few-shot + chain-of-thought
-        7. Text structuring with beautiful section headers
-        8. Quality validation with hallucination detection
-        
-        Args:
-            edition_id: Magazine edition ID
-            page_number: Page number to extract
-            
-        Returns:
-            Dict with extraction results and validation info, or None if failed
-        """
-        try:
-            print(f"\n{'='*60}")
-            print(f"🚀 NEW PIPELINE: Extracting tender from Edition {edition_id}, Page {page_number}")
-            print(f"{'='*60}\n")
-            
-            # Step 1: Download full magazine PDF
-            print(f"📥 Step 1: Downloading PDF...")
-            magazine_pdf = self._download_magazine_pdf(edition_id)
-            if not magazine_pdf:
-                print(f"❌ Failed to download PDF")
-                return None
-            
-            # Step 2: Extract high-resolution image from PDF page
-            print(f"\n📷 Step 2: Extracting high-res image from PDF...")
-            image_bytes = self._extract_high_res_image_from_pdf(magazine_pdf, page_number)
-            if not image_bytes:
-                print(f"❌ Failed to extract image from PDF")
-                return None
-            
-            # Step 3: Google Document AI OCR
-            print(f"\n🔍 Step 3: Running Google Document AI OCR...")
-            ocr_result = self._extract_text_with_google_ocr(image_bytes)
-            if not ocr_result or not ocr_result.get('text'):
-                print(f"❌ OCR failed or returned no text")
-                return None
-            
-            ocr_text = ocr_result['text']
-            print(f"✅ OCR extracted {len(ocr_text)} characters")
-            
-            # Step 4: GPT-4o text cleanup (no vision!)
-            print(f"\n🧹 Step 4: Cleaning OCR text with GPT-4o...")
-            cleaned_text = self._cleanup_ocr_text_with_gpt(ocr_text)
-            
-            # Step 5: Structured extraction
-            print(f"\n📋 Step 5: Extracting structured data...")
-            structured_data = self._extract_structured_data(cleaned_text)
-            
-            # Step 6: Structure text with beautiful section headers
-            print(f"\n📝 Step 6: Structuring text with section headers...")
-            final_text = self._structure_text_with_sections(
-                structured_data['body'],
-                structured_data['extracted_fields']
-            )
-            
-            # Step 7: Quality validation
-            print(f"\n✅ Step 7: Validating extraction quality...")
-            validation = self._validate_extraction_quality(
-                final_text,
-                structured_data['extracted_fields']
-            )
-            
-            # Compile final result
-            result = {
-                'text': final_text,  # Use structured text (with headers)
-                'ministry': structured_data['extracted_fields'].get('ministry'),
-                'extracted_fields': structured_data['extracted_fields'],
-                'validation': validation,
-                'pipeline_version': 'v2_pdf_highres_structured'
-            }
-            
-            print(f"\n{'='*60}")
-            print(f"✅ PIPELINE COMPLETE")
-            print(f"   - Text length: {len(result['text'])} chars")
-            print(f"   - Quality score: {validation['quality_score']}")
-            print(f"   - Ministry: {result['ministry'] or 'Not found'}")
-            print(f"   - Status: {'✅ ACCEPTABLE' if validation['is_acceptable'] else '⚠️  NEEDS REVIEW'}")
-            print(f"{'='*60}\n")
-            
-            return result
-            
-        except Exception as e:
-            print(f"\n❌ NEW PIPELINE FAILED: {e}")
-            import traceback
-            print(traceback.format_exc())
-            return None
-    
-    def _extract_text_with_google_ocr(self, image_bytes: bytes) -> Optional[dict]:
-        """
-        Extract text using only Google Document AI (no Vision)
-        
-        Args:
-            image_bytes: Image bytes
-            
-        Returns:
-            Dict with text and basic info
-        """
-        try:
-            # Preprocess image (using module-level function)
-            processed_image = preprocess_image_for_ocr(image_bytes)
-            
-            # Run Google Document AI
-            text = self.pdf_extractor.extract_text_with_google_doc_ai(processed_image)
-            
-            if not text or len(text.strip()) < 20:
-                print(f"  ⚠️  Google OCR returned insufficient text")
-                return None
-            
-            return {
-                'text': text,
-                'method': 'google_doc_ai'
-            }
-            
-        except Exception as e:
-            print(f"  ❌ Google OCR failed: {e}")
-            return None
-    
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[dict]:
         """
-        Extract text from image using Claude Sonnet 4.5 OCR
+        Extract text from image using Mistral OCR (primary) and Claude Sonnet 4.5 (fallback)
         
         OCR approach:
-        1. Claude Sonnet 4.5 (premium quality, 100% success rate) - Primary
-        2. Old method (Google Document AI) - Fallback only if Claude unavailable
+        1. Mistral OCR (fast, cost-effective, Arabic-optimized) - Primary
+        2. Claude Sonnet 4.5 (premium quality, structured extraction) - Fallback
         
         Args:
             image_bytes: Image bytes (PNG/JPEG)
@@ -1247,32 +1120,60 @@ STRUCTURED TEXT:"""
         """
         try:
             import os
-            
-            # ============================================
-            # Claude Sonnet 4.5 OCR (Primary & Only)
-            # ============================================
+
+            # Try Mistral OCR first if available
+            try:
+                from app.ai.mistral_ocr_service import mistral_ocr_service
+            except Exception:
+                mistral_ocr_service = None
+
+            if mistral_ocr_service:
+                print(f"  🚀 Using Mistral OCR for text extraction (primary)...")
+                try:
+                    mistral_result = mistral_ocr_service.extract_text_from_image(image_bytes, image_format="png")
+                except Exception as e:
+                    print(f"  ⚠️  Mistral OCR error: {e}")
+                    mistral_result = None
+
+                if mistral_result and mistral_result.get('text') and len(mistral_result['text']) > 50:
+                    print(f"  ✅ Mistral OCR extracted {len(mistral_result['text'])} characters")
+                    # Ensure consistent structure with downstream expectations
+                    mistral_result.setdefault('ministry', None)
+                    mistral_result.setdefault('meeting_date_text', None)
+                    mistral_result.setdefault('meeting_location', None)
+                    mistral_result.setdefault('tender_number', None)
+                    mistral_result.setdefault('deadline', None)
+                    mistral_result.setdefault('note', None)
+                    mistral_result.setdefault('ocr_method', 'mistral')
+                    return mistral_result
+                else:
+                    print(f"  ⚠️  Mistral OCR returned insufficient text, trying Claude/legacy OCR...")
+            else:
+                print(f"  ⏭️  Mistral OCR service not available, using Claude/legacy OCR...")
+
+            # Claude Sonnet 4.5 OCR (fallback)
             claude_api_key = os.getenv('ANTHROPIC_API_KEY')
             if not claude_api_key or claude_api_key == 'your-claude-api-key-here':
-                print(f"⚠️  ANTHROPIC_API_KEY not configured, falling back to old method")
-                return self._extract_text_from_image_old(image_bytes)
-            
+                print(f"⚠️  ANTHROPIC_API_KEY not configured, no OCR available")
+                return None
+
             print(f"  🧠 Using Claude Sonnet 4.5 for OCR and extraction...")
-            
+
             # Import Claude service
             from app.ai.claude_service import claude_service
-            
+
             if not claude_service:
-                print(f"⚠️  Claude service not initialized, falling back to old method")
-                return self._extract_text_from_image_old(image_bytes)
-            
+                print(f"⚠️  Claude service not initialized, no OCR available")
+                return None
+
             # Extract with Claude
             result = claude_service.extract_tender_from_image(image_bytes, image_format="png")
-            
+
             if result and result.get('body'):
                 print(f"  ✅ Claude extracted {len(result['body'])} characters")
                 print(f"  🏛️ Ministry: {result.get('ministry', 'N/A')}")
                 print(f"  📊 Confidence: {result.get('ocr_confidence', 0.0)}")
-                
+
                 return {
                     'text': result['body'],
                     'ministry': result.get('ministry'),
@@ -1292,118 +1193,7 @@ STRUCTURED TEXT:"""
                 return None
                 
         except Exception as e:
-            print(f"  ❌ All OCR methods failed: {e}, falling back to old method")
-            import traceback
-            print(traceback.format_exc())
-            # Fallback to old method
-            return self._extract_text_from_image_old(image_bytes)
-    
-    def _extract_text_from_image_old(self, image_bytes: bytes) -> Optional[dict]:
-        """
-        OLD METHOD: Extract text from image using Google Document AI and Vision
-        (Fallback if Claude is not configured)
-        
-        Args:
-            image_bytes: Image bytes (PNG/JPEG)
-            
-        Returns:
-            Dict with {'text': str, 'ministry': str} if successful, None otherwise
-        """
-        try:
-            from google.cloud import documentai_v1 as documentai
-            from google.oauth2 import service_account
-            from google.api_core.client_options import ClientOptions
-            import os
-            import base64
-            import json
-            
-            # Check if Google Doc AI is configured
-            processor_name = os.getenv('DOCUMENTAI_PROCESSOR_NAME')
-            if not processor_name:
-                print(f"⚠️  DOCUMENTAI_PROCESSOR_NAME not configured")
-                return None
-            
-            print(f"  🌐 Using Google Document AI for image OCR...")
-            
-            # Extract location from processor name
-            # Format: projects/PROJECT_ID/locations/LOCATION/processors/PROCESSOR_ID
-            parts = processor_name.split('/')
-            location = parts[3] if len(parts) > 3 else 'us'
-            
-            # Load credentials (support both base64 and file-based)
-            credentials = None
-            base64_creds = os.getenv('GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS_BASE64')
-            if base64_creds:
-                try:
-                    creds_json = base64.b64decode(base64_creds).decode('utf-8')
-                    creds_dict = json.loads(creds_json)
-                    credentials = service_account.Credentials.from_service_account_info(creds_dict)
-                except Exception as e:
-                    print(f"  ⚠️  Error loading base64 credentials: {e}")
-            elif os.getenv('GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS'):
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.getenv('GOOGLE_CLOUD_DOCUMENTAI_CREDENTIALS')
-                )
-            
-            if not credentials:
-                print(f"  ⚠️  Google Cloud credentials not found")
-                return None
-            
-            # Set API endpoint
-            opts = ClientOptions(api_endpoint=f"{location}-documentai.googleapis.com")
-            client = documentai.DocumentProcessorServiceClient(
-                credentials=credentials, 
-                client_options=opts
-            )
-            
-            # Preprocess image to improve OCR quality (Stage 0)
-            enhanced_image_bytes = self._preprocess_image(image_bytes)
-            
-            # Create document object for enhanced image
-            raw_document = documentai.RawDocument(
-                content=enhanced_image_bytes,
-                mime_type="image/png"
-            )
-            
-            # Configure OCR with Arabic language hints (proper syntax from Google docs)
-            ocr_config = documentai.OcrConfig(
-                hints=documentai.OcrConfig.Hints(
-                    language_hints=["ar", "en"]  # Arabic primary, English secondary
-                )
-            )
-            
-            process_options = documentai.ProcessOptions(
-                ocr_config=ocr_config
-            )
-            
-            # Process request with language hints
-            request = documentai.ProcessRequest(
-                name=processor_name,
-                raw_document=raw_document,
-                process_options=process_options
-            )
-            
-            result = client.process_document(request=request)
-            document = result.document
-            
-            # Extract text
-            text = document.text
-            
-            if text and len(text.strip()) > 0:
-                print(f"  ✅ Google Doc AI extracted {len(text)} characters from image")
-                print(f"  📝 Raw preview: {text[:200]}...")  # Show first 200 chars
-                
-                # Apply Arabic text correction with Vision-based ministry extraction
-                corrected_text, ministry = self._correct_arabic_text_with_vision(text, image_bytes)
-                
-                print(f"  📝 Corrected preview: {corrected_text[:200]}...")
-                return {'text': corrected_text, 'ministry': ministry}
-            else:
-                print(f"  ⚠️  Google Doc AI returned empty text")
-                return None
-                
-        except Exception as e:
-            print(f"  ❌ Google Document AI failed: {e}")
+            print(f"  ❌ All OCR methods failed: {e}")
             import traceback
             print(traceback.format_exc())
             return None
@@ -1667,33 +1457,32 @@ STRUCTURED TEXT:"""
         """
         Extract text from a specific page in the Kuwait Alyom gazette
         
-        Uses Browserless API to screenshot the page, then sends to Google Doc AI for OCR.
-        Falls back to PDF extraction if Browserless is not configured.
+        Uses Mistral OCR (primary) and Claude (fallback) for text extraction.
+        Tries screenshot first, then PDF-based OCR.
         
         Args:
             edition_id: Gazette edition ID
             page_number: Page number in the edition
             
         Returns:
-            Dict with {'text': str, 'ministry': str} if successful, None otherwise
+            Dict with {'text': str, 'ministry': str, ...} if successful, None otherwise
         """
         try:
             print(f"📄 Extracting text from page: Edition {edition_id}, Page {page_number}")
             
-            # Method 1: Try Browserless screenshot (PRIMARY METHOD)
+            # Method 1: Try Browserless screenshot (PRIMARY - fastest)
             screenshot_bytes = self._screenshot_page_with_browserless(edition_id, page_number)
             if screenshot_bytes:
                 print(f"🖼️  Using screenshot-based extraction...")
                 result = self._extract_text_from_image(screenshot_bytes)
-                # Lower threshold to 20 chars - even messy Google OCR is better than nothing
                 if result and result.get('text') and len(result['text']) > 20:
                     print(f"✅ Extracted {len(result['text'])} characters from screenshot")
                     return result
                 else:
-                    print(f"⚠️  Screenshot extraction returned minimal text (< 20 chars), trying PDF fallback...")
+                    print(f"⚠️  Screenshot extraction returned minimal text (< 20 chars), trying PDF OCR...")
             
-            # Method 2: Fallback to PDF extraction (no Vision ministry extraction in this path)
-            print(f"📄 Falling back to PDF extraction...")
+            # Method 2: PDF-based Mistral OCR (if screenshot failed)
+            print(f"📄 Trying PDF-based OCR...")
             magazine_pdf = self._download_magazine_pdf(edition_id)
             if not magazine_pdf:
                 return None
@@ -1702,14 +1491,39 @@ STRUCTURED TEXT:"""
             if not page_pdf:
                 return None
             
-            text = self.pdf_extractor.extract_text_from_bytes(page_pdf)
+            # Try Mistral PDF OCR first
+            try:
+                from app.ai.mistral_ocr_service import mistral_ocr_service
+            except Exception:
+                mistral_ocr_service = None
             
-            if text and len(text) > 50:
-                print(f"✅ Extracted {len(text)} characters from PDF")
-                return {'text': text, 'ministry': None}  # No Vision in PDF fallback
-            else:
-                print(f"⚠️  PDF extraction returned minimal text")
-                return None
+            if mistral_ocr_service:
+                print(f"  🚀 Using Mistral PDF OCR...")
+                mistral_result = mistral_ocr_service.extract_text_from_pdf(page_pdf)
+                if mistral_result and mistral_result.get('text') and len(mistral_result['text']) > 50:
+                    print(f"  ✅ Mistral PDF OCR extracted {len(mistral_result['text'])} characters")
+                    # Add missing fields for consistency
+                    mistral_result.setdefault('ministry', None)
+                    mistral_result.setdefault('meeting_date_text', None)
+                    mistral_result.setdefault('meeting_location', None)
+                    mistral_result.setdefault('tender_number', None)
+                    mistral_result.setdefault('deadline', None)
+                    mistral_result.setdefault('note', None)
+                    return mistral_result
+                else:
+                    print(f"  ⚠️  Mistral PDF OCR returned insufficient text, trying Claude on PDF image...")
+            
+            # Method 3: Extract image from PDF and use Claude (last resort)
+            print(f"  🖼️  Extracting image from PDF for Claude OCR...")
+            image_bytes = self._extract_high_res_image_from_pdf(magazine_pdf, page_number)
+            if image_bytes:
+                result = self._extract_text_from_image(image_bytes)
+                if result and result.get('text') and len(result['text']) > 20:
+                    print(f"✅ Extracted {len(result['text'])} characters via Claude OCR")
+                    return result
+            
+            print(f"⚠️  All OCR methods returned minimal or no text")
+            return None
                 
         except Exception as e:
             print(f"❌ Error extracting text: {e}")

@@ -1,31 +1,20 @@
 """
-PDF text extraction and processing
-Uses Google Document AI (primary) with PyMuPDF fallback
+PDF metadata extraction and downloading
+Text extraction is handled by Mistral OCR / Claude services
 """
 import fitz  # PyMuPDF
 import requests
 from typing import Optional, Dict
 import tempfile
 import os
-from google.cloud import documentai_v1 as documentai
-from google.api_core.client_options import ClientOptions
 
 
 class PDFExtractor:
-    """Extract text and metadata from PDF files using Google Document AI"""
+    """Download PDFs and extract metadata (page count, etc.). OCR is handled separately by Mistral/Claude."""
     
-    def __init__(self, 
-                 project_id: Optional[str] = None,
-                 location: str = "us",
-                 processor_id: Optional[str] = None):
+    def __init__(self):
         self.timeout = 60  # seconds
         self.max_size = 50 * 1024 * 1024  # 50MB max file size
-        
-        # Google Document AI configuration
-        self.project_id = project_id or os.getenv("GOOGLE_CLOUD_PROJECT")
-        self.location = location
-        self.processor_id = processor_id or os.getenv("GOOGLE_DOC_AI_PROCESSOR_ID")
-        self.use_google_doc_ai = bool(self.project_id and self.processor_id)
     
     def download_pdf(self, url: str) -> Optional[bytes]:
         """
@@ -77,130 +66,6 @@ class PDFExtractor:
             print(f"  ❌ Error downloading PDF: {e}")
             return None
     
-    def extract_text_with_google_doc_ai(self, pdf_bytes: bytes) -> Optional[str]:
-        """
-        Extract text using Google Document AI (primary method)
-        
-        Args:
-            pdf_bytes: PDF content as bytes
-            
-        Returns:
-            Extracted text or None if failed
-        """
-        if not self.use_google_doc_ai:
-            return None
-        
-        try:
-            print(f"  🌐 Using Google Document AI for extraction...")
-            
-            # Set API endpoint
-            opts = ClientOptions(api_endpoint=f"{self.location}-documentai.googleapis.com")
-            client = documentai.DocumentProcessorServiceClient(client_options=opts)
-            
-            # Configure the process request
-            name = client.processor_path(self.project_id, self.location, self.processor_id)
-            
-            # Create document object
-            raw_document = documentai.RawDocument(
-                content=pdf_bytes,
-                mime_type="application/pdf"
-            )
-            
-            # Process request
-            request = documentai.ProcessRequest(
-                name=name,
-                raw_document=raw_document
-            )
-            
-            result = client.process_document(request=request)
-            document = result.document
-            
-            # Extract text
-            text = document.text
-            
-            if text and len(text.strip()) > 0:
-                print(f"  ✅ Google Doc AI extracted {len(text)} characters")
-                return text
-            else:
-                print(f"  ⚠️  Google Doc AI returned empty text")
-                return None
-                
-        except Exception as e:
-            print(f"  ❌ Google Document AI failed: {e}")
-            return None
-    
-    def extract_text_from_bytes(self, pdf_bytes: bytes) -> Optional[str]:
-        """
-        Extract text from PDF bytes (tries Google Doc AI first, then PyMuPDF fallback)
-        
-        Args:
-            pdf_bytes: PDF content as bytes
-            
-        Returns:
-            Extracted text or None if failed
-        """
-        # Try Google Document AI first (primary method)
-        if self.use_google_doc_ai:
-            text = self.extract_text_with_google_doc_ai(pdf_bytes)
-            if text and len(text.strip()) > 100:  # Minimum 100 chars to be valid
-                return text
-            print(f"  ⚠️  Google Doc AI didn't return enough text, trying PyMuPDF fallback...")
-        else:
-            print(f"  ⚠️  Google Doc AI not configured, using PyMuPDF only")
-        
-        # Fallback to PyMuPDF
-        try:
-            print(f"  📄 Using PyMuPDF fallback...")
-            
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
-                tmp_file.write(pdf_bytes)
-                tmp_path = tmp_file.name
-            
-            try:
-                # Open PDF
-                doc = fitz.open(tmp_path)
-                
-                # Extract text from all pages
-                text_parts = []
-                for page_num in range(len(doc)):
-                    page = doc[page_num]
-                    text = page.get_text()
-                    if text.strip():
-                        text_parts.append(text)
-                
-                doc.close()
-                
-                full_text = "\n\n".join(text_parts)
-                
-                print(f"  ✅ PyMuPDF extracted {len(full_text)} characters from {len(doc)} pages")
-                
-                return full_text if full_text.strip() else None
-                
-            finally:
-                # Clean up temp file
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-                    
-        except Exception as e:
-            print(f"  ❌ PyMuPDF extraction failed: {e}")
-            return None
-    
-    def extract_text_from_url(self, url: str) -> Optional[str]:
-        """
-        Download PDF and extract text in one step
-        
-        Args:
-            url: PDF URL
-            
-        Returns:
-            Extracted text or None if failed
-        """
-        pdf_bytes = self.download_pdf(url)
-        if not pdf_bytes:
-            return None
-        
-        return self.extract_text_from_bytes(pdf_bytes)
     
     def get_pdf_metadata(self, pdf_bytes: bytes) -> Dict:
         """
