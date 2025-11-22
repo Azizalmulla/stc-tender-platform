@@ -399,22 +399,22 @@ Generate the JSON now:""".format(
         Returns:
             Dict with ministry, tender_number, deadline, document_price_kd, category
         """
-        prompt = f"""Extract structured fields from this Kuwait tender text.
+        prompt = """Extract structured fields from this Kuwait tender text.
 
 **CRITICAL: Extract ONLY information explicitly stated in the text. Do NOT guess or fabricate.**
 
 Text:
-{text[:2500]}
+{text_content}
 
 Extract these fields and return JSON:
 ```json
-{
+{{
   "ministry": "Exact issuing organization name from document",
   "tender_number": "Exact tender/RFP/RFQ number",
   "deadline": "YYYY-MM-DD format",
   "document_price_kd": numeric value in KD,
   "category": "IT|Construction|Services|Healthcare|Infrastructure|Other"
-}
+}}
 ```
 
 **Rules:**
@@ -427,7 +427,7 @@ Extract these fields and return JSON:
 - For category: Classify based on keywords in text
 - For document_price_kd: Extract numeric value only
 
-**Return JSON now:**"""
+**Return JSON now:**""".format(text_content=text[:2500].replace('{', '{{').replace('}', '}}'))
         
         try:
             response = self.client.messages.create(

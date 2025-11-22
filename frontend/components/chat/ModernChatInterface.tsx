@@ -38,13 +38,43 @@ export function ModernChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load session ID from localStorage on mount
+  // Load session ID and conversation history from localStorage on mount
   useEffect(() => {
-    const storedSessionId = localStorage.getItem('chat_session_id');
-    if (storedSessionId) {
-      setSessionId(storedSessionId);
-      // TODO: Load conversation history from API
-    }
+    const loadConversation = async () => {
+      const storedSessionId = localStorage.getItem('chat_session_id');
+      if (storedSessionId) {
+        setSessionId(storedSessionId);
+        
+        // Load conversation history from backend
+        try {
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/api/chat/conversations/${storedSessionId}`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Map backend messages to frontend Message format
+            const loadedMessages: Message[] = data.messages.map((msg: any) => ({
+              id: msg.timestamp, // Use timestamp as unique ID
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date(msg.timestamp),
+            }));
+            
+            // Set messages if we have history
+            if (loadedMessages.length > 0) {
+              setMessages(loadedMessages);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load conversation history:', error);
+          // Keep default welcome message if loading fails
+        }
+      }
+    };
+    
+    loadConversation();
   }, []);
 
   // Auto-scroll to bottom when new message
