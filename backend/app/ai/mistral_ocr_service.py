@@ -1,18 +1,16 @@
 import os
 import time
+import base64
 from typing import Optional, Dict, Any, List
 
-import requests
 from mistralai import Mistral
 
 from app.core.config import settings
 
 
 class MistralOCRService:
-    """Thin wrapper around Mistral OCR for images/PDF pages.
-
-    This service uploads a file to Mistral, then calls the /v1/ocr endpoint
-    with that file_id and aggregates page markdown into a single text string.
+    """Wrapper around Mistral OCR using client.ocr.process() with base64 data URLs.
+    Supports images and PDFs.
     """
 
     def __init__(self) -> None:
@@ -21,52 +19,36 @@ class MistralOCRService:
             raise ValueError("MISTRAL_API_KEY not configured")
 
         self.api_key = api_key
-        # Use official SDK for file upload, raw HTTP for /v1/ocr (not yet in SDK)
         self.client = Mistral(api_key=api_key)
-        self.ocr_model = "mistral-ocr-latest"
-        self.api_url = os.getenv("MISTRAL_API_URL", "https://api.mistral.ai").rstrip("/")
+        self.ocr_model = "pixtral-12b-2409"
 
-    def _upload_file(
-        self,
-        content: bytes,
-        file_name: str,
-        content_type: str,
-    ) -> Optional[str]:
-        """Upload a file to Mistral Files API and return file_id."""
-        try:
-            file_obj = {
-                "file_name": file_name,
-                "content": content,
-                "content_type": content_type,
-            }
-            uploaded = self.client.files.upload(file=file_obj)
-            if uploaded and getattr(uploaded, "id", None):
-                return uploaded.id
-            print("  ⚠️  Mistral file upload returned no id")
-            return None
-        except Exception as e:
-            print(f"  ❌ Mistral file upload failed: {e}")
-            return None
+    def _encode_to_data_url(self, content: bytes, mime_type: str) -> str:
+        """Encode bytes to base64 data URL."""
+        base64_content = base64.b64encode(content).decode('utf-8')
+        return f"data:{mime_type};base64,{base64_content}"
 
-    def _call_ocr(self, file_id: str) -> Optional[Dict[str, Any]]:
-        """Call Mistral /v1/ocr for a previously uploaded file."""
+    def _process_ocr(self, data_url: str) -> Optional[Dict[str, Any]]:
+        """Process OCR using client.ocr.process() with data URL."""
         try:
-            url = f"{self.api_url}/v1/ocr"
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": self.ocr_model,
-                "document": {"file_id": file_id},
-            }
-            resp = requests.post(url, headers=headers, json=payload, timeout=60)
-            if resp.status_code != 200:
-                print(f"  ❌ Mistral OCR HTTP {resp.status_code}: {resp.text[:200]}")
+            response = self.client.ocr.process(
+                model=self.ocr_model,
+                document={
+                    "type": "image_url",
+                    "image_url": data_url,
+                }
+            )
+            
+            # Extract pages from response
+            if not response or not hasattr(response, 'pages'):
+                print("  ⚠️  Mistral OCR returned no pages")
                 return None
-            return resp.json()
+            
+            return {"pages": [{
+                "markdown": page.markdown
+            } for page in response.pages]}
+            
         except Exception as e:
-            print(f"  ❌ Mistral OCR request failed: {e}")
+            print(f"  ❌ Mistral OCR failed: {e}")
             return None
 
     def extract_text_from_image(
@@ -90,26 +72,22 @@ class MistralOCRService:
         }
         or None on failure.
         """
-        content_type = f"image/{image_format}"
+        # Determine MIME type
+        mime_type = f"image/{image_format}" if image_format != "jpg" else "image/jpeg"
         
         # Retry logic for transient failures
         last_error = None
         for attempt in range(max_retries):
             try:
-                file_id = self._upload_file(image_bytes, f"page.{image_format}", content_type)
-                if not file_id:
-                    if attempt < max_retries - 1:
-                        wait_time = 2 ** attempt  # 1s, 2s, 4s
-                        print(f"  ⚠️  Mistral file upload failed, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
-                        time.sleep(wait_time)
-                        continue
-                    return None
-
-                ocr_result = self._call_ocr(file_id)
+                # Encode to data URL
+                data_url = self._encode_to_data_url(image_bytes, mime_type)
+                
+                # Call OCR
+                ocr_result = self._process_ocr(data_url)
                 if not ocr_result:
                     if attempt < max_retries - 1:
                         wait_time = 2 ** attempt
-                        print(f"  ⚠️  Mistral OCR call failed, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                        print(f"  ⚠️  Mistral OCR failed, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
                         time.sleep(wait_time)
                         continue
                     return None
@@ -133,7 +111,7 @@ class MistralOCRService:
                     "ocr_confidence": 0.85,
                 }
                 
-            except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+            except Exception as e:
                 last_error = e
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
@@ -164,22 +142,15 @@ class MistralOCRService:
         }
         or None on failure.
         """
-        content_type = "application/pdf"
-        
         # Retry logic for transient failures
         last_error = None
         for attempt in range(max_retries):
             try:
-                file_id = self._upload_file(pdf_bytes, "document.pdf", content_type)
-                if not file_id:
-                    if attempt < max_retries - 1:
-                        wait_time = 2 ** attempt
-                        print(f"  ⚠️  Mistral PDF upload failed, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
-                        time.sleep(wait_time)
-                        continue
-                    return None
-
-                ocr_result = self._call_ocr(file_id)
+                # Encode PDF to data URL
+                data_url = self._encode_to_data_url(pdf_bytes, "application/pdf")
+                
+                # Call OCR
+                ocr_result = self._process_ocr(data_url)
                 if not ocr_result:
                     if attempt < max_retries - 1:
                         wait_time = 2 ** attempt
@@ -208,7 +179,7 @@ class MistralOCRService:
                     "page_count": len(pages),
                 }
                 
-            except (requests.exceptions.RequestException, requests.exceptions.Timeout) as e:
+            except Exception as e:
                 last_error = e
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt
