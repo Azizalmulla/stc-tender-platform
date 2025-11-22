@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_, or_, func
+from sqlalchemy import desc, and_, or_, func, nullslast
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from app.db.session import get_db
@@ -93,8 +93,8 @@ async def get_tenders(
         query = query.filter(and_(*filters))
     
     # Order by published date (newest first)
-    # NULLs go last to avoid issues with tenders that have no date
-    query = query.order_by(Tender.published_at.desc().nullslast())
+    # Use nulls_last for better compatibility
+    query = query.order_by(nullslast(Tender.published_at.desc()))
     
     # Pagination
     tenders = query.offset(skip).limit(limit).all()

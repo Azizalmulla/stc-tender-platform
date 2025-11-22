@@ -11,11 +11,14 @@ import { useLanguage } from "@/contexts/LanguageContext";
 export default function PTMPage() {
   const { t, language } = useLanguage();
 
-  // Fetch only pre-tender meetings
-  const { data: ptms, isLoading, error } = useQuery({
-    queryKey: ["ptms"],
-    queryFn: () => getTenders({ category: "pre_tenders", limit: 100 }),
+  // Fetch all tenders and filter for those with meeting dates
+  const { data: allTenders, isLoading, error } = useQuery({
+    queryKey: ["all-tenders-for-ptm"],
+    queryFn: () => getTenders({ limit: 200 }),
   });
+
+  // Filter tenders that have pre-tender meetings (meeting_date is not null)
+  const ptms = allTenders?.filter(t => t.meeting_date) || [];
 
   return (
     <div className="container mx-auto px-4 py-8">
