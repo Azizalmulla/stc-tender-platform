@@ -462,7 +462,123 @@ Extract these fields and return JSON:
                 "category": None
             }
     
-    def answer_question(self, question: str, context_docs: List[Dict], conversation_history: List[Dict] = None) -> Dict:
+    def analyze_query(self, question: str) -> Dict:
+        """
+        Analyze user query to extract intent and filters for accurate database queries
+        
+        Args:
+            question: User's natural language question
+            
+        Returns:
+            Dict with query_type, entity_filters, search_terms
+        """
+        prompt = """Analyze this user question about Kuwait government tenders and extract structured query information.
+
+Question: """ + question + """
+
+Return ONLY a JSON object with these fields:
+{
+  "query_type": "count" | "search" | "specific",
+  "intent": "Brief description of what user wants",
+  "ministry_keywords": ["keyword1", "keyword2"],
+  "category_keywords": ["keyword1", "keyword2"],
+  "deadline_filter": "upcoming" | "expired" | "all" | null,
+  "sql_conditions": [
+    {"field": "ministry", "operator": "ILIKE", "value": "%keyword%"},
+    {"field": "deadline", "operator": ">", "value": "2025-11-22"}
+  ]
+}
+
+**Instructions:**
+- query_type: "count" if asking "how many", "total"; "specific" if asking about exact tender; "search" otherwise
+- ministry_keywords: Extract ministry-related terms in Arabic AND English
+- category_keywords: IT, construction, services, healthcare, etc.
+- deadline_filter: Detect time-sensitive queries ("closing soon", "expired", "active")
+- sql_conditions: Build SQL WHERE clause conditions dynamically
+
+**Examples:**
+
+Q: "how many electricity tenders"
+→ {
+  "query_type": "count",
+  "intent": "Count tenders from electricity ministry",
+  "ministry_keywords": ["electricity", "كهرباء", "الكهرباء والماء"],
+  "category_keywords": [],
+  "deadline_filter": null,
+  "sql_conditions": [
+    {"field": "ministry", "operator": "ILIKE", "value": "%كهرباء%"}
+  ]
+}
+
+Q: "show me finance tenders closing this week"
+→ {
+  "query_type": "search",
+  "intent": "Find finance tenders with upcoming deadlines",
+  "ministry_keywords": ["finance", "مالية", "المالية"],
+  "category_keywords": [],
+  "deadline_filter": "upcoming",
+  "sql_conditions": [
+    {"field": "ministry", "operator": "ILIKE", "value": "%مالية%"},
+    {"field": "deadline", "operator": ">=", "value": "TODAY"},
+    {"field": "deadline", "operator": "<=", "value": "TODAY+7"}
+  ]
+}
+
+Return ONLY the JSON, no explanation."""
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=800,
+                temperature=0.1,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            
+            response_text = response.content[0].text
+            
+            # Parse JSON
+            start_idx = response_text.find('{')
+            end_idx = response_text.rfind('}') + 1
+            
+            if start_idx == -1 or end_idx == 0:
+                # Default fallback
+                return {
+                    "query_type": "search",
+                    "intent": question,
+                    "ministry_keywords": [],
+                    "category_keywords": [],
+                    "deadline_filter": None,
+                    "sql_conditions": []
+                }
+            
+            json_str = response_text[start_idx:end_idx]
+            result = json.loads(json_str)
+            
+            print(f"🧠 Query Analysis: {result['query_type']} - {result['intent']}")
+            return result
+            
+        except Exception as e:
+            print(f"❌ Query analysis error: {e}")
+            # Fallback to simple search
+            return {
+                "query_type": "search",
+                "intent": question,
+                "ministry_keywords": [],
+                "category_keywords": [],
+                "deadline_filter": None,
+                "sql_conditions": []
+            }
+    
+    def answer_question(
+        self, 
+        question: str, 
+        context_docs: List[Dict], 
+        conversation_history: List[Dict] = None,
+        metadata: Dict = None
+    ) -> Dict:
         """
         Answer questions about tenders using Claude Sonnet 4.5 with RAG
         
@@ -470,10 +586,21 @@ Extract these fields and return JSON:
             question: User question in Arabic or English
             context_docs: List of relevant tender documents
             conversation_history: Previous conversation messages (optional)
+            metadata: Optional metadata like total_count for accurate aggregations
             
         Returns:
             Dict with answer_ar, answer_en, citations, confidence
         """
+        # Add metadata context if provided (e.g., accurate counts)
+        metadata_context = ""
+        if metadata and metadata.get('total_count'):
+            total_count = metadata['total_count']
+            sample_count = len(context_docs)
+            metadata_context = f"\n\n**DATABASE STATISTICS:**\n"
+            metadata_context += f"- Total matching tenders in database: {total_count}\n"
+            metadata_context += f"- Sample tenders shown below: {sample_count}\n"
+            metadata_context += f"- Use the TOTAL COUNT ({total_count}) when answering 'how many' questions\n\n"
+        
         # Build context from documents
         context = "\n\n---\n\n".join([
             f"رقم المناقصة / Tender Number: {doc.get('tender_number', 'N/A')}\n"
@@ -504,26 +631,23 @@ Extract these fields and return JSON:
                 for msg in conversation_history[-6:]
             ])
         
-        prompt = f"""أنت مساعد خبير في مناقصات الحكومة الكويتية من جريدة كويت اليوم الرسمية.
-You are an expert assistant for Kuwait government tenders from Kuwait Al-Yawm Official Gazette.
+        # Get today's date for temporal context
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_readable = datetime.now().strftime("%B %d, %Y")
+        
+        prompt = f"""You are an expert assistant for Kuwait government tenders from Kuwait Al-Yawm Official Gazette.
+أنت مساعد خبير في مناقصات الحكومة الكويتية من جريدة كويت اليوم الرسمية.
 
-**التعليمات / INSTRUCTIONS:**
-1. أجب فقط باستخدام الوثائق المقدمة - لا تخترع معلومات
-   Answer ONLY using the provided context documents - never invent information
-2. استخدم تاريخ المحادثة لفهم الأسئلة التالية
-   Use conversation history for follow-up questions context
-3. لاستعلامات المواعيد: استخدم حقل الموعد النهائي وقارنه باليوم
-   For deadline queries: Use the Deadline field and compare to today
-4. لاستعلامات الجهات: اذكر اسم الجهة بوضوح من السياق
-   For ministry queries: Clearly state the ministry name from context
-5. دائماً اذكر المصادر مع روابط [المصدر]
-   Always cite sources with [Source] links
-6. إذا وجدت عدة مناقصات، اذكرها برقم
-   If multiple tenders match, list them with numbers
-7. ضمّن التفاصيل المهمة: رقم المناقصة، الجهة، الموعد النهائي
-   Include key details: Tender number, Ministry, Deadline
-8. كن موجزاً لكن شاملاً
-   Be concise but comprehensive
+Today's date is {today_readable} ({today}). Use this to determine if tenders are active or expired.
+
+**INSTRUCTIONS:**
+- Answer ONLY using the provided documents - never fabricate information
+- Use conversation history for context on follow-up questions  
+- Always cite sources with [Source] links
+- If multiple tenders match, list them clearly
+- Be concise but comprehensive
+- Respond in BOTH Arabic and English based on question language
 
 **صيغة الرد / OUTPUT FORMAT:**
 
@@ -553,7 +677,7 @@ You are an expert assistant for Kuwait government tenders from Kuwait Al-Yawm Of
    (نفس التنسيق / same format)
 ---
 
-**الوثائق / Context Documents:**
+{metadata_context}**الوثائق / Context Documents:**
 {context}
 {conversation_context}
 

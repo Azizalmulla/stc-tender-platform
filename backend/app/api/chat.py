@@ -247,47 +247,130 @@ async def ask_question(
                 session_id=session_id
             )
     
-    # Detect aggregation queries (how many, total count)
-    aggregation_keywords = ['how many', 'total', 'count', 'كم عدد', 'مجموع', 'إجمالي']
-    is_aggregation = any(keyword in question_lower for keyword in aggregation_keywords)
+    # 4. INTELLIGENT QUERY ANALYSIS - Let Claude understand the query
+    print(f"🧠 Analyzing query with Claude...")
+    query_analysis = claude_service.analyze_query(request.question)
     
-    if is_aggregation:
-        print(f"🎯 Aggregation query detected")
-        # Get total count from database instead of RAG
-        total_count = db.query(Tender).count()
+    query_type = query_analysis.get('query_type', 'search')
+    sql_conditions = query_analysis.get('sql_conditions', [])
+    
+    # 5. TWO-STAGE APPROACH for COUNT queries
+    if query_type == 'count' and sql_conditions:
+        print(f"🎯 COUNT query detected - using hybrid SQL + Voyage approach")
         
-        # Apply ministry filter if detected
-        ministry_filter_query = db.query(Tender)
-        detected_ministries = []
-        for eng_name, arabic_names in MINISTRY_ALIASES.items():
-            if eng_name in question_lower:
-                detected_ministries.extend(arabic_names)
+        # Build dynamic SQL query from Claude's analysis
+        from sqlalchemy import and_, or_
+        filters = []
         
-        if detected_ministries:
-            filtered_count = ministry_filter_query.filter(Tender.ministry.in_(detected_ministries)).count()
-            answer_ar = f"يوجد {filtered_count} مناقصة من {', '.join(detected_ministries)} في النظام (من أصل {total_count} مناقصة إجمالية)."
-            answer_en = f"There are {filtered_count} tenders from {', '.join(detected_ministries)} in the system (out of {total_count} total tenders)."
-        else:
-            answer_ar = f"يوجد حالياً {total_count} مناقصة في النظام."
-            answer_en = f"There are currently {total_count} tenders in the system."
+        for condition in sql_conditions:
+            field = condition.get('field')
+            operator = condition.get('operator')
+            value = condition.get('value')
+            
+            # Handle date placeholders
+            if value == 'TODAY':
+                from datetime import datetime
+                value = datetime.now().date()
+            elif value and 'TODAY+' in str(value):
+                from datetime import datetime, timedelta
+                days = int(value.split('+')[1])
+                value = (datetime.now() + timedelta(days=days)).date()
+            
+            # Build filter dynamically
+            if field == 'ministry' and operator == 'ILIKE':
+                filters.append(Tender.ministry.ilike(value))
+            elif field == 'category' and operator == 'ILIKE':
+                filters.append(Tender.category.ilike(value))
+            elif field == 'deadline' and operator == '>=':
+                filters.append(Tender.deadline >= value)
+            elif field == 'deadline' and operator == '<=':
+                filters.append(Tender.deadline <= value)
+            elif field == 'deadline' and operator == '>':
+                filters.append(Tender.deadline > value)
         
-        # Save assistant message
+        # Get accurate count from SQL
+        count_query = db.query(Tender)
+        if filters:
+            count_query = count_query.filter(and_(*filters))
+        
+        accurate_count = count_query.count()
+        print(f"📊 Accurate count from SQL: {accurate_count}")
+        
+        # Get top 10 samples using Voyage for relevance
+        question_embedding = voyage_service.generate_embedding(
+            request.question,
+            input_type="query"
+        )
+        
+        sample_query = db.query(
+            Tender,
+            TenderEmbedding.embedding.cosine_distance(question_embedding).label('distance')
+        ).join(
+            TenderEmbedding, Tender.id == TenderEmbedding.tender_id
+        )
+        
+        if filters:
+            sample_query = sample_query.filter(and_(*filters))
+        
+        samples = sample_query.order_by('distance').limit(10).all()
+        
+        # Build context with BOTH count and samples
+        context_docs = []
+        for tender, distance in samples:
+            context_docs.append({
+                "title": tender.title or "",
+                "tender_number": tender.tender_number or "Not specified",
+                "body": tender.body or "",
+                "summary_ar": tender.summary_ar or "",
+                "summary_en": tender.summary_en or "",
+                "facts_ar": tender.facts_ar or [],
+                "facts_en": tender.facts_en or [],
+                "url": tender.url,
+                "published_at": tender.published_at.isoformat() if tender.published_at else None,
+                "deadline": tender.deadline.isoformat() if tender.deadline else None,
+                "ministry": tender.ministry,
+                "category": tender.category,
+                "document_price_kd": float(tender.document_price_kd) if tender.document_price_kd else None,
+                "meeting_date": tender.meeting_date.isoformat() if tender.meeting_date else None,
+                "meeting_location": tender.meeting_location,
+                "is_postponed": tender.is_postponed,
+                "original_deadline": tender.original_deadline.isoformat() if tender.original_deadline else None,
+                "postponement_reason": tender.postponement_reason
+            })
+        
+        # Generate answer with accurate count metadata
+        answer_result = claude_service.answer_question(
+            request.question,
+            context_docs,
+            conversation_history=conversation_history,
+            metadata={'total_count': accurate_count}
+        )
+        
+        # Inject count into response if Claude didn't include it
+        if str(accurate_count) not in answer_result['answer_en'] and str(accurate_count) not in answer_result['answer_ar']:
+            answer_result['answer_en'] = f"I found {accurate_count} matching tenders. " + answer_result['answer_en']
+            answer_result['answer_ar'] = f"وجدت {accurate_count} مناقصة مطابقة. " + answer_result['answer_ar']
+        
+        # Save messages
         assistant_message = Message(
             conversation_id=conversation.id,
             role="assistant",
-            content=answer_ar if request.lang == 'ar' else answer_en
+            content=answer_result["answer_ar"] if request.lang == 'ar' else answer_result["answer_en"]
         )
         db.add(assistant_message)
         db.commit()
         
         return ChatResponse(
-            answer_ar=answer_ar,
-            answer_en=answer_en,
-            citations=[],
-            confidence=1.0,  # Direct DB query = high confidence
-            context_count=0,
+            answer_ar=answer_result["answer_ar"],
+            answer_en=answer_result["answer_en"],
+            citations=answer_result.get("citations", []),
+            confidence=answer_result.get("confidence", 1.0),
+            context_count=accurate_count,
             session_id=session_id
         )
+    
+    # 6. REGULAR SEARCH with Voyage RAG (for non-count queries)
+    print(f"🔍 Regular search query - using Voyage RAG")
     
     # Base query with Voyage embedding for RAG
     question_embedding = voyage_service.generate_embedding(
@@ -322,7 +405,7 @@ async def ask_question(
         base_query = base_query.filter(Tender.deadline.isnot(None), Tender.deadline <= next_week)
         print(f"🎯 Smart filter: Deadline within 7 days")
     
-    # 5. Retrieve relevant documents using vector similarity
+    # 7. Retrieve relevant documents using vector similarity
     results = base_query.filter(
         TenderEmbedding.embedding.cosine_distance(question_embedding) < 0.8  # Loose threshold based on empirical testing
     ).order_by(
@@ -360,7 +443,7 @@ async def ask_question(
             session_id=session_id
         )
     
-    # 6. Prepare context documents with FULL tender information
+    # 8. Prepare context documents with FULL tender information
     context_docs = [
         {
             "title": tender.title or "",
@@ -385,7 +468,7 @@ async def ask_question(
         for tender, distance in results
     ]
     
-    # 7. Generate answer using Claude with context and conversation history
+    # 9. Generate answer using Claude with context and conversation history
     try:
         answer_result = claude_service.answer_question(
             request.question, 
