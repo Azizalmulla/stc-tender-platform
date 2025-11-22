@@ -90,47 +90,58 @@ def run_scrape_task():
                     Tender.tender_number == tender_data.get('tender_number')
                 ).first() if tender_data.get('tender_number') else None
                 
-                # Kuwait Alyom scraper already extracted PDF text via Claude Sonnet 4.5 OCR
+                # Kuwait Alyom scraper already extracted PDF text via OCR
                 pdf_text = tender_data.get('pdf_text')  # Already extracted by scraper
+                ocr_method = tender_data.get('ocr_method', 'unknown')  # OCR source
                 description = tender_data.get('description', '')
                 
                 # Prepare text for AI (combine description + PDF content)
-                # Validate OCR text quality before using it
-                def is_valid_body_text(text):
-                    """Check if OCR text is valid content or pure garbage (only table structures)
+                # Validation: Trust pre-validated Mistral/Claude, check unknown sources
+                def is_valid_body_text(text, method):
+                    """Validate OCR text quality based on source
                     
-                    Important: Valid tenders CAN contain tables! Only reject if it's MOSTLY garbage.
+                    Strategy:
+                    - Trust Mistral/Claude (already validated in scraper)
+                    - Validate unknown/legacy sources (safety net)
                     """
                     if not text or len(text.strip()) < 100:
                         return False
                     
-                    # Calculate indicators
-                    pipe_ratio = text.count('|') / len(text) if len(text) > 0 else 0
-                    digit_ratio = sum(c.isdigit() for c in text) / len(text) if len(text) > 0 else 0
+                    # Trust premium OCR services - already validated in scraper
+                    if method in ['mistral', 'claude']:
+                        print(f"  ✅ Using pre-validated {method.upper()} OCR ({len(text)} chars)")
+                        return True
                     
-                    # Check for actual Arabic/English content
+                    # Unknown/legacy OCR: Apply validation
+                    text_len = len(text)
+                    pipe_ratio = text.count('|') / text_len if text_len > 0 else 0
+                    digit_ratio = sum(c.isdigit() for c in text) / text_len if text_len > 0 else 0
+                    
                     arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
                     english_chars = sum(1 for c in text if c.isalpha() and c.isascii())
-                    content_ratio = (arabic_chars + english_chars) / len(text) if len(text) > 0 else 0
+                    content_ratio = (arabic_chars + english_chars) / text_len if text_len > 0 else 0
                     
-                    # Only reject if it's MOSTLY garbage (very strict criteria)
-                    # A valid tender with tables will still have decent text content
-                    if pipe_ratio > 0.15:  # More than 15% pipes = pure table structure
+                    if pipe_ratio > 0.40:
+                        print(f"  ❌ {method} OCR: High pipe ratio ({pipe_ratio:.1%})")
                         return False
-                    if digit_ratio > 0.6:  # More than 60% digits = pure page numbers
+                    if digit_ratio > 0.70:
+                        print(f"  ❌ {method} OCR: High digit ratio ({digit_ratio:.1%})")
                         return False
-                    if content_ratio < 0.15:  # Less than 15% actual text = pure garbage
+                    if content_ratio < 0.15:
+                        print(f"  ❌ {method} OCR: Low content ratio ({content_ratio:.1%})")
                         return False
                     
+                    print(f"  ✅ {method} OCR validated")
                     return True
                 
-                if pdf_text and is_valid_body_text(pdf_text):
-                    print(f"  ✅ Using OCR extracted text ({len(pdf_text)} characters)")
+                if pdf_text and is_valid_body_text(pdf_text, ocr_method):
+                    print(f"  ✅ Using OCR extracted text ({len(pdf_text)} characters, method={ocr_method})")
                     # Use PDF text as main body, description as summary
                     full_text = f"{description}\n\n{pdf_text[:50000]}"  # Limit to 50K chars
                     body_text = pdf_text[:100000]  # Store up to 100K chars
                 elif pdf_text:
-                    print(f"  ⚠️  OCR text quality check FAILED (table structures/garbage detected)")
+                    print(f"  ⚠️  OCR text quality check FAILED (method={ocr_method})")
+                    print(f"     - Text length: {len(pdf_text)} chars")
                     print(f"     - Pipe ratio: {pdf_text.count('|') / len(pdf_text):.2%}")
                     print(f"     - Using description as fallback")
                     full_text = description

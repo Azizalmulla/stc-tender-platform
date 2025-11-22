@@ -1133,19 +1133,52 @@ STRUCTURED TEXT:"""
                     print(f"  ⚠️  Mistral OCR error: {e}")
                     mistral_result = None
 
-                if mistral_result and mistral_result.get('text') and len(mistral_result['text']) > 50:
-                    print(f"  ✅ Mistral OCR extracted {len(mistral_result['text'])} characters")
-                    # Ensure consistent structure with downstream expectations
-                    mistral_result.setdefault('ministry', None)
-                    mistral_result.setdefault('meeting_date_text', None)
-                    mistral_result.setdefault('meeting_location', None)
-                    mistral_result.setdefault('tender_number', None)
-                    mistral_result.setdefault('deadline', None)
-                    mistral_result.setdefault('note', None)
-                    mistral_result.setdefault('ocr_method', 'mistral')
-                    return mistral_result
-                else:
-                    print(f"  ⚠️  Mistral OCR returned insufficient text, trying Claude/legacy OCR...")
+                if mistral_result and mistral_result.get('text'):
+                    text = mistral_result['text']
+                    text_len = len(text)
+                    
+                    # COMPREHENSIVE VALIDATION (same as cron.py but at extraction time)
+                    # This ensures Claude fallback happens NOW if Mistral output is bad
+                    
+                    # Check 1: Minimum length
+                    if text_len < 200:
+                        print(f"  ❌ Mistral text too short ({text_len} chars) - trying Claude...")
+                        mistral_result = None
+                    else:
+                        # Check 2: Content quality
+                        space_ratio = text.count(' ') / text_len if text_len > 0 else 0
+                        arabic_chars = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+                        english_chars = sum(1 for c in text if c.isalpha() and c.isascii())
+                        content_ratio = (arabic_chars + english_chars) / text_len if text_len > 0 else 0
+                        arabic_ratio = arabic_chars / text_len if text_len > 0 else 0
+                        
+                        # Check for garbage patterns
+                        if content_ratio < 0.05:  # Less than 5% real text
+                            print(f"  ❌ Mistral text is garbage (only {content_ratio:.1%} real content) - trying Claude...")
+                            mistral_result = None
+                        elif space_ratio > 0.40 and content_ratio < 0.15:  # "I I I I" pattern
+                            print(f"  ❌ Mistral has repetition pattern ({space_ratio:.0%} spaces) - trying Claude...")
+                            mistral_result = None
+                        elif arabic_ratio < 0.05:  # Not Arabic tender document
+                            print(f"  ❌ Mistral text not Arabic ({arabic_ratio:.1%} Arabic) - trying Claude...")
+                            mistral_result = None
+                        else:
+                            # Validation passed!
+                            print(f"  ✅ Mistral OCR validated: {text_len} chars, {arabic_ratio:.0%} Arabic, {content_ratio:.0%} content")
+                    
+                    # If validation passed, return Mistral result
+                    if mistral_result:
+                        mistral_result.setdefault('ministry', None)
+                        mistral_result.setdefault('meeting_date_text', None)
+                        mistral_result.setdefault('meeting_location', None)
+                        mistral_result.setdefault('tender_number', None)
+                        mistral_result.setdefault('deadline', None)
+                        mistral_result.setdefault('note', None)
+                        mistral_result.setdefault('ocr_method', 'mistral')
+                        return mistral_result
+                
+                # Mistral failed or didn't pass validation - use Claude
+                print(f"  ⚠️  Mistral OCR failed validation - using Claude (premium quality)...")
             else:
                 print(f"  ⏭️  Mistral OCR service not available, using Claude/legacy OCR...")
 
@@ -1744,6 +1777,7 @@ STRUCTURED TEXT:"""
             ministry = None
             description = f"Gazette Edition {edition_no}, Page {page_number}"
             pdf_text = None
+            ocr_method = None  # Track OCR source for quality validation
             meeting_date = None
             meeting_location = None
             
@@ -1757,6 +1791,7 @@ STRUCTURED TEXT:"""
                 
                 if pdf_result:
                     pdf_text = pdf_result.get('text')
+                    ocr_method = pdf_result.get('ocr_method', 'unknown')  # Store OCR source
                     vision_ministry = pdf_result.get('ministry')
                     
                     # Claude returns meeting info directly in pdf_result
@@ -1823,6 +1858,7 @@ STRUCTURED TEXT:"""
                 "hijri_date": hijri_date,
                 "gazette_id": tender_id,
                 "pdf_text": pdf_text,  # Full OCR text for AI processing
+                "ocr_method": ocr_method,  # OCR source (mistral/claude/unknown) for quality validation
                 "kuwait_category_id": category_id,  # Store original category for reference
                 "meeting_date": meeting_date,  # Pre-tender meeting date
                 "meeting_location": meeting_location,  # Pre-tender meeting location
