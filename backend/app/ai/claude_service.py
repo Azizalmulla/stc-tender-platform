@@ -472,7 +472,9 @@ Extract these fields and return JSON:
         Returns:
             Dict with query_type, entity_filters, search_terms
         """
-        prompt = """Analyze this user question about Kuwait government tenders and extract structured query information.
+        prompt = """You are an expert query analyzer for Kuwait government tenders. Extract ALL conditions from the user's question with 100% accuracy.
+
+**CRITICAL: Extract EVERY filter mentioned. Do not miss any conditions.**
 
 Question: """ + question + """
 
@@ -523,6 +525,42 @@ Q: "show me finance tenders closing this week"
     {"field": "deadline", "operator": "<=", "value": "TODAY+7"}
   ]
 }
+
+Q: "finance tenders over 100K closing next week"
+→ {
+  "query_type": "search",
+  "intent": "Find high-value finance tenders with upcoming deadlines",
+  "ministry_keywords": ["finance", "مالية"],
+  "category_keywords": [],
+  "deadline_filter": "upcoming",
+  "sql_conditions": [
+    {"field": "ministry", "operator": "ILIKE", "value": "%مالية%"},
+    {"field": "document_price_kd", "operator": ">", "value": 100000},
+    {"field": "deadline", "operator": ">=", "value": "TODAY"},
+    {"field": "deadline", "operator": "<=", "value": "TODAY+7"}
+  ]
+}
+
+Q: "IT tenders from MOF with meetings scheduled"
+→ {
+  "query_type": "search",
+  "intent": "Find IT tenders from Ministry of Finance that have pre-tender meetings",
+  "ministry_keywords": ["MOF", "finance", "مالية"],
+  "category_keywords": ["IT", "information technology"],
+  "deadline_filter": null,
+  "sql_conditions": [
+    {"field": "ministry", "operator": "ILIKE", "value": "%مالية%"},
+    {"field": "category", "operator": "ILIKE", "value": "%IT%"},
+    {"field": "meeting_date", "operator": "IS NOT", "value": "NULL"}
+  ]
+}
+
+**IMPORTANT:**
+- Extract ALL conditions (ministry, price, deadline, category, meeting, etc.)
+- For prices: 100K = 100000, 1M = 1000000
+- For deadlines: "next week" = TODAY to TODAY+7, "this month" = TODAY to TODAY+30
+- For categories: IT, construction, healthcare, services, etc.
+- Always include Arabic equivalents for ministry names
 
 Return ONLY the JSON, no explanation."""
         
@@ -649,33 +687,55 @@ Today's date is {today_readable} ({today}). Use this to determine if tenders are
 - Be concise but comprehensive
 - Respond in BOTH Arabic and English based on question language
 
-**صيغة الرد / OUTPUT FORMAT:**
+**OUTPUT FORMAT - Conversational & Clean:**
 
-لمناقصة واحدة / For single tender:
----
-**المناقصة / Tender: [Tender Number or Title]**
+For single tender:
+I found [1 tender / مناقصة واحدة] from [Ministry].
 
-• الجهة / Ministry: [ministry name]
-• الموعد النهائي / Deadline: [deadline or "غير محدد / Not specified"]
-• التصنيف / Category: [category]
-• التفاصيل / Details: [brief summary]
+📋 **Tender #[Number]**  
+⏰ Deadline: [Date]
 
-[عرض التفاصيل الكاملة / View Full Details]([url])
----
+[Brief 1-2 sentence description of what it's for]
 
-لعدة مناقصات / For multiple tenders:
----
-وجدت [N] مناقصة / Found [N] tenders:
+Key requirements:
+• [Requirement 1]
+• [Requirement 2]
+• [Requirement 3]
 
-**1. [Tender Number]**
-   • الجهة / Ministry: [ministry]
-   • الموعد النهائي / Deadline: [deadline]
-   • [ملخص موجز / Brief summary]
-   [الرابط / Link]([url])
+[View Full Details →]([url])
 
-**2. [Tender Number]**
-   (نفس التنسيق / same format)
----
+⚠️ [Any important notes if applicable]
+
+For multiple tenders (3-5):
+I found [N tenders] matching your query. Here are the top results:
+
+**1. Tender #[Number]** - [Ministry]  
+⏰ Closes: [Date]  
+[One line description]  
+[View →]([url])
+
+**2. Tender #[Number]** - [Ministry]  
+⏰ Closes: [Date]  
+[One line description]  
+[View →]([url])
+
+**3. [Same format]**
+
+For many tenders (10+):
+I found [N tenders] in total. Here are the 5 most relevant:
+
+1. **[Ministry] - Tender #[Number]**  
+   Closes [Date] • [One line] • [View →]([url])
+
+2. **[Ministry] - Tender #[Number]**  
+   Closes [Date] • [One line] • [View →]([url])
+
+**IMPORTANT:**
+- Be conversational, not robotic
+- Use emojis sparingly (📋 ⏰ ⚠️ ✓ only)
+- Keep it clean and scannable
+- No heavy markdown boxing (---)
+- Mobile-friendly format
 
 {metadata_context}**الوثائق / Context Documents:**
 {context}
@@ -688,13 +748,12 @@ Today's date is {today_readable} ({today}). Use this to determine if tenders are
 - درجة الثقة / Confidence: 0.9+ للتطابق التام، 0.7-0.9 للتطابق الجيد، 0.5-0.7 للتطابق الضعيف
   0.9+ for exact matches, 0.7-0.9 for good matches, 0.5-0.7 for weak matches
 
-**ثنائي اللغة / MULTILINGUAL:**
-- اكتشف لغة السؤال وأجب بالعربية والإنجليزية
-  Detect question language and respond in BOTH Arabic and English
-- إذا كان السؤال بالعربية → إجابة مفصلة بالعربية + ملخص موجز بالإنجليزية
-  If Arabic question → detailed Arabic + brief English summary
-- إذا كان السؤال بالإنجليزية → إجابة مفصلة بالإنجليزية + ملخص موجز بالعربية
-  If English question → detailed English + brief Arabic summary
+**BILINGUAL RESPONSE:**
+- Respond primarily in the question's language
+- Keep the same conversational, friendly tone in both languages
+- Use natural phrasing, not robotic translations
+- English: "I found 3 tenders..." not "There are 3 tenders..."
+- Arabic: "وجدت 3 مناقصات..." not "يوجد 3 مناقصات..."
 
 **السؤال / Question:**
 {question}

@@ -287,6 +287,16 @@ async def ask_question(
                 filters.append(Tender.deadline <= value)
             elif field == 'deadline' and operator == '>':
                 filters.append(Tender.deadline > value)
+            elif field == 'document_price_kd' and operator == '>':
+                filters.append(Tender.document_price_kd > value)
+            elif field == 'document_price_kd' and operator == '>=':
+                filters.append(Tender.document_price_kd >= value)
+            elif field == 'document_price_kd' and operator == '<':
+                filters.append(Tender.document_price_kd < value)
+            elif field == 'document_price_kd' and operator == '<=':
+                filters.append(Tender.document_price_kd <= value)
+            elif field == 'meeting_date' and operator == 'IS NOT':
+                filters.append(Tender.meeting_date.isnot(None))
         
         # Get accurate count from SQL
         count_query = db.query(Tender)
