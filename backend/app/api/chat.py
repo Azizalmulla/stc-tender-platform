@@ -273,6 +273,7 @@ async def ask_question(
         # Build dynamic SQL query from Claude's analysis
         from sqlalchemy import and_, or_
         filters = []
+        has_ministry_filter = False
         
         for condition in sql_conditions:
             field = condition.get('field')
@@ -291,6 +292,7 @@ async def ask_question(
             # Build filter dynamically
             if field == 'ministry' and operator == 'ILIKE':
                 filters.append(Tender.ministry.ilike(value))
+                has_ministry_filter = True
             elif field == 'category' and operator == 'ILIKE':
                 filters.append(Tender.category.ilike(value))
             elif field == 'deadline' and operator == '>=':
@@ -309,6 +311,17 @@ async def ask_question(
                 filters.append(Tender.document_price_kd <= value)
             elif field == 'meeting_date' and operator == 'IS NOT':
                 filters.append(Tender.meeting_date.isnot(None))
+
+        # If no explicit ministry condition but the question mentions a known English alias,
+        # apply alias-based ministry filter so counts for "how many tenders from ministry X" are reliable.
+        if not has_ministry_filter:
+            detected_ministries = []
+            for eng_name, arabic_names in MINISTRY_ALIASES.items():
+                if eng_name in question_lower:
+                    detected_ministries.extend(arabic_names)
+            if detected_ministries:
+                filters.append(Tender.ministry.in_(detected_ministries))
+                print(f"🎯 Count query ministry alias filter: {detected_ministries}")
         
         # Get accurate count from SQL
         count_query = db.query(Tender)
