@@ -16,6 +16,9 @@ from io import BytesIO
 import numpy as np
 import cv2
 
+# Import Mistral OCR service at module level (not lazily in methods)
+from app.ai.mistral_ocr_service import mistral_ocr_service
+
 logger = logging.getLogger(__name__)
 
 
@@ -1122,11 +1125,6 @@ STRUCTURED TEXT:"""
             import os
 
             # Try Mistral OCR first if available
-            try:
-                from app.ai.mistral_ocr_service import mistral_ocr_service
-            except Exception:
-                mistral_ocr_service = None
-
             if mistral_ocr_service:
                 print(f"  🚀 Using Mistral OCR for text extraction (primary)...")
                 try:
@@ -1492,11 +1490,6 @@ STRUCTURED TEXT:"""
                 return None
             
             # Try Mistral PDF OCR first
-            try:
-                from app.ai.mistral_ocr_service import mistral_ocr_service
-            except Exception:
-                mistral_ocr_service = None
-            
             if mistral_ocr_service:
                 print(f"  🚀 Using Mistral PDF OCR...")
                 mistral_result = mistral_ocr_service.extract_text_from_pdf(page_pdf)
