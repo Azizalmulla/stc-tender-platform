@@ -13,10 +13,10 @@ import { formatDate } from "@/lib/utils";
 export default function NotificationsPage() {
   const { t, language } = useLanguage();
 
-  // Fetch all tenders
+  // Fetch all tenders (backend max limit is 100)
   const { data: tenders, isLoading, error } = useQuery({
     queryKey: ["all-tenders-notifications"],
-    queryFn: () => getTenders({ limit: 200 }),
+    queryFn: () => getTenders({ limit: 100 }),
   });
 
   // Filter postponed tenders
