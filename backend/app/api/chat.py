@@ -254,8 +254,20 @@ async def ask_question(
     query_type = query_analysis.get('query_type', 'search')
     sql_conditions = query_analysis.get('sql_conditions', [])
     
-    # 5. TWO-STAGE APPROACH for COUNT queries
-    if query_type == 'count' and sql_conditions:
+    # Heuristic: if the question clearly asks "how many", force count type
+    if query_type != 'count':
+        if any(phrase in question_lower for phrase in [
+            'how many',
+            'number of tenders',
+            'total tenders',
+            'كم عدد',
+            'كم مناقصة',
+            'عدد المناقصات',
+        ]):
+            query_type = 'count'
+    
+    # 5. TWO-STAGE APPROACH for COUNT queries (including global totals)
+    if query_type == 'count':
         print(f"🎯 COUNT query detected - using hybrid SQL + Voyage approach")
         
         # Build dynamic SQL query from Claude's analysis
