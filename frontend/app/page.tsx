@@ -35,13 +35,13 @@ export default function HomePage() {
   });
 
   return (
-    <div className="container py-8 space-y-8">
+    <div className="container py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6 md:space-y-8 px-4">
       {/* Hero Section */}
       <div className="space-y-2">
-        <h1 className="text-4xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
           {t("Government Tenders", "المناقصات الحكومية")}
         </h1>
-        <p className="text-lg text-muted-foreground">
+        <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
           {t(
             "Track and analyze government tenders in Kuwait with AI",
             "تتبع وتحليل المناقصات الحكومية في الكويت بالذكاء الاصطناعي"
@@ -51,7 +51,7 @@ export default function HomePage() {
 
       {/* Stats Grid */}
       {stats && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
@@ -168,12 +168,12 @@ export default function HomePage() {
 
       {/* Tenders Grid */}
       <div>
-        <h2 className="text-2xl font-bold mb-4">
+        <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">
           {t("Latest Tenders", "أحدث المناقصات")}
         </h2>
         
         {tendersLoading ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (
               <Card key={i}>
                 <CardHeader>
@@ -187,7 +187,7 @@ export default function HomePage() {
             ))}
           </div>
         ) : tenders && tenders.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
             {tenders.map((tender) => (
               <ModernTenderCard key={tender.id} tender={tender} />
             ))}
