@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Text, TIMESTAMP, ARRAY, CheckConstraint, Index, Numeric, ForeignKey, REAL, Boolean
+from sqlalchemy import Column, BigInteger, Text, TIMESTAMP, ARRAY, CheckConstraint, Index, Numeric, ForeignKey, REAL, Boolean, String, Date
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -36,6 +36,19 @@ class Tender(Base):
     # Pre-tender meeting info
     meeting_date = Column(TIMESTAMP(timezone=True))
     meeting_location = Column(Text)
+    
+    # STC Export fields
+    bidding_company = Column(String)  # STC, SSTC, ePortal, CDN, JMT, AlDar, H3
+    sector = Column(String)  # Government, Oil & Gas, Banking, Private, Telecom
+    tender_type = Column(String)  # CTC, Semi-Tender, RFP, RFQ, etc.
+    tender_fee = Column(Numeric(10, 2))
+    release_date = Column(Date)
+    expected_value = Column(Numeric(15, 2))
+    status = Column(String, server_default='Released')  # Released, Future, Awarded, Opened, Cancelled
+    awarded_vendor = Column(String)
+    awarded_value = Column(Numeric(15, 2))
+    justification = Column(String)
+    announcement_type = Column(String)  # Awarding, Complaint, Opening Envelopes, etc.
     
     __table_args__ = (
         Index('idx_tenders_published_at', 'published_at'),

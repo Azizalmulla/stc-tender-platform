@@ -9,15 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, FileText, Calendar, AlertCircle } from "lucide-react";
+import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function HomePage() {
   const { t } = useLanguage();
+  const { toast } = useToast();
   const [filters, setFilters] = useState({
     ministry: "",
     category: "",
   });
+  const [selectedTenders, setSelectedTenders] = useState<Set<number>>(new Set());
+  const [isExporting, setIsExporting] = useState(false);
 
   const { data: tenders, isLoading: tendersLoading } = useQuery({
     queryKey: ["tenders", filters],
@@ -33,6 +37,76 @@ export default function HomePage() {
     queryKey: ["stats"],
     queryFn: getTenderStats,
   });
+
+  // Selection handlers
+  const toggleTenderSelection = (tenderId: number) => {
+    const newSelection = new Set(selectedTenders);
+    if (newSelection.has(tenderId)) {
+      newSelection.delete(tenderId);
+    } else {
+      newSelection.add(tenderId);
+    }
+    setSelectedTenders(newSelection);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedTenders.size === tenders?.length) {
+      setSelectedTenders(new Set());
+    } else {
+      setSelectedTenders(new Set(tenders?.map(t => t.id) || []));
+    }
+  };
+
+  // Export handler
+  const handleExportToSTC = async () => {
+    if (selectedTenders.size === 0) {
+      toast({
+        title: t("No tenders selected", "لم يتم اختيار مناقصات"),
+        description: t("Please select at least one tender to export", "يرجى اختيار مناقصة واحدة على الأقل للتصدير"),
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/export/stc-template`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tender_ids: Array.from(selectedTenders) })
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `STC_Tenders_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: t("Export successful", "تم التصدير بنجاح"),
+        description: t(`Exported ${selectedTenders.size} tenders`, `تم تصدير ${selectedTenders.size} مناقصة`),
+      });
+
+      setSelectedTenders(new Set()); // Clear selection
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: t("Export failed", "فشل التصدير"),
+        description: t("Failed to export tenders. Please try again.", "فشل تصدير المناقصات. يرجى المحاولة مرة أخرى."),
+        variant: "destructive"
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div className="container py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6 md:space-y-8 px-4">
@@ -168,9 +242,53 @@ export default function HomePage() {
 
       {/* Tenders Grid */}
       <div>
-        <h2 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">
-          {t("Latest Tenders", "أحدث المناقصات")}
-        </h2>
+        <div className="flex items-center justify-between mb-3 sm:mb-4">
+          <h2 className="text-xl sm:text-2xl font-bold">
+            {t("Latest Tenders", "أحدث المناقصات")}
+          </h2>
+          
+          {/* Export Toolbar */}
+          {tenders && tenders.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleSelectAll}
+                className="gap-2"
+              >
+                {selectedTenders.size === tenders.length ? (
+                  <CheckSquare className="h-4 w-4" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+                <span className="hidden sm:inline">
+                  {selectedTenders.size === tenders.length 
+                    ? t("Deselect All", "إلغاء تحديد الكل")
+                    : t("Select All", "تحديد الكل")}
+                </span>
+              </Button>
+              
+              <Button
+                onClick={handleExportToSTC}
+                disabled={selectedTenders.size === 0 || isExporting}
+                className="gap-2"
+              >
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {isExporting 
+                    ? t("Exporting...", "جاري التصدير...")
+                    : t(`Export to STC`, `تصدير لـ STC`)
+                  }
+                </span>
+                {selectedTenders.size > 0 && (
+                  <Badge variant="secondary" className="ml-1">
+                    {selectedTenders.size}
+                  </Badge>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
         
         {tendersLoading ? (
           <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -189,7 +307,12 @@ export default function HomePage() {
         ) : tenders && tenders.length > 0 ? (
           <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
             {tenders.map((tender) => (
-              <ModernTenderCard key={tender.id} tender={tender} />
+              <ModernTenderCard 
+                key={tender.id} 
+                tender={tender}
+                isSelected={selectedTenders.has(tender.id)}
+                onToggleSelection={toggleTenderSelection}
+              />
             ))}
           </div>
         ) : (

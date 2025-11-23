@@ -28,6 +28,9 @@ Pillow==10.2.0
 opencv-python-headless==4.9.0.80  # Image pre-processing for OCR
 numpy==1.26.3  # Required by opencv
 
+# Excel Export
+openpyxl==3.1.2  # Generate Excel files for STC template export
+
 # OCR (DEPRECATED - No longer using Google or Tesseract)
 # google-cloud-documentai==2.26.0  # Removed - using Mistral + Claude instead
 # pytesseract==0.3.10  # Removed - not needed

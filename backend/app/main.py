@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api import tenders, search, chat, cron, notifications, meetings
+from app.api import tenders, search, chat, cron, notifications, meetings, export
 
 
 app = FastAPI(
@@ -28,6 +28,7 @@ app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(cron.router, prefix="/api", tags=["cron"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(meetings.router, prefix="/api/meetings", tags=["meetings"])
+app.include_router(export.router, prefix="/api", tags=["export"])
 
 
 @app.get("/")

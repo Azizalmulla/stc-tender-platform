@@ -4,16 +4,18 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Building2, FileText, ExternalLink, Clock, AlertTriangle, Users } from "lucide-react";
+import { Calendar, Building2, FileText, ExternalLink, Clock, AlertTriangle, Users, CheckSquare, Square } from "lucide-react";
 import Link from "next/link";
 import { Tender } from "@/lib/api";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface TenderCardProps {
   tender: Tender;
+  isSelected?: boolean;
+  onToggleSelection?: (tenderId: number) => void;
 }
 
-export function ModernTenderCard({ tender }: TenderCardProps) {
+export function ModernTenderCard({ tender, isSelected = false, onToggleSelection }: TenderCardProps) {
   const { t, language } = useLanguage();
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'غير محدد';
@@ -51,9 +53,26 @@ export function ModernTenderCard({ tender }: TenderCardProps) {
   };
 
   return (
-    <Card className="group hover:shadow-lg transition-all duration-300 hover:border-primary/50">
+    <Card className={`group hover:shadow-lg transition-all duration-300 ${isSelected ? 'border-primary border-2' : 'hover:border-primary/50'}`}>
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
+          {/* Selection Checkbox */}
+          {onToggleSelection && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                onToggleSelection(tender.id);
+              }}
+              className="mt-1 hover:opacity-70 transition-opacity"
+            >
+              {isSelected ? (
+                <CheckSquare className="h-5 w-5 text-primary" />
+              ) : (
+                <Square className="h-5 w-5 text-muted-foreground" />
+              )}
+            </button>
+          )}
+          
           <div className="flex-1 space-y-2">
             <CardTitle className="text-xl leading-relaxed group-hover:text-primary transition-colors">
               {tender.title || 'بدون عنوان'}
