@@ -104,6 +104,13 @@ class MistralOCRService:
                     print("  ⚠️  Mistral OCR returned no markdown text")
                     return None
 
+                # DEBUG: Show what Mistral actually returned
+                print(f"  🔍 Mistral OCR DEBUG:")
+                print(f"     - Text length: {len(text)} chars")
+                print(f"     - First 200 chars: {text[:200]}")
+                print(f"     - Arabic chars: {sum(1 for c in text if '\u0600' <= c <= '\u06FF')}")
+                print(f"     - English chars: {sum(1 for c in text if c.isalpha() and c.isascii())}")
+                
                 # Success!
                 return {
                     "text": text,
