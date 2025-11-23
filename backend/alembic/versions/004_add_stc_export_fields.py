@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '004_add_stc_export_fields'
-down_revision = '003_add_conversations'
+down_revision = '003'
 branch_labels = None
 depends_on = None
 
