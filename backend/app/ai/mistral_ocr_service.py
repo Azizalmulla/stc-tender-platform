@@ -105,11 +105,13 @@ class MistralOCRService:
                     return None
 
                 # DEBUG: Show what Mistral actually returned
+                arabic_count = sum(1 for c in text if '\u0600' <= c <= '\u06FF')
+                english_count = sum(1 for c in text if c.isalpha() and c.isascii())
                 print(f"  🔍 Mistral OCR DEBUG:")
                 print(f"     - Text length: {len(text)} chars")
                 print(f"     - First 200 chars: {text[:200]}")
-                print(f"     - Arabic chars: {sum(1 for c in text if '\u0600' <= c <= '\u06FF')}")
-                print(f"     - English chars: {sum(1 for c in text if c.isalpha() and c.isascii())}")
+                print(f"     - Arabic chars: {arabic_count}")
+                print(f"     - English chars: {english_count}")
                 
                 # Success!
                 return {
