@@ -22,4 +22,13 @@ echo "⚠️  Skipping Alembic migrations (broken chain - will fix later)"
 echo "✅ All database schema updates applied via SQL"
 
 echo "Starting application..."
-uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
+# On Render, trust proxy headers from Render's internal network
+# Render uses private network ranges for internal routing
+# This is more secure than --forwarded-allow-ips='*'
+if [ -n "$RENDER" ]; then
+  echo "🚀 Running on Render - enabling proxy header trust"
+  uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+else
+  echo "🏠 Running locally - no proxy headers"
+  uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+fi
