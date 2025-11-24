@@ -118,8 +118,17 @@ export const getTenders = async (params?: {
   value_max?: number;
   urgency?: string;
 }): Promise<Tender[]> => {
-  const { data } = await api.get("/api/tenders", { params });
-  return data;
+  console.log('🔍 getTenders called with params:', params);
+  console.log('🌐 API baseURL:', api.defaults.baseURL);
+  try {
+    const { data } = await api.get("/api/tenders", { params });
+    console.log('✅ getTenders response:', data?.length, 'tenders');
+    return data;
+  } catch (error: any) {
+    console.error('❌ getTenders error:', error.message);
+    console.error('Error details:', error.response?.status, error.response?.data);
+    throw error;
+  }
 };
 
 export const getTenderDetail = async (id: number): Promise<TenderDetail> => {
