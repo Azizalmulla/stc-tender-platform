@@ -45,6 +45,34 @@ export interface SearchResult extends Tender {
   score?: number;
 }
 
+export interface NotificationItem {
+  id: number;
+  title: string;
+  ministry: string | null;
+  url: string;
+  deadline: string | null;
+  published_at: string | null;
+  reason: string | null;
+  type: 'postponed' | 'new' | 'deadline';
+  // AI-powered fields
+  relevance_score?: 'very_high' | 'high' | 'medium' | 'low';
+  confidence?: number;
+  keywords?: string[];
+  sectors?: string[];
+  recommended_team?: string;
+  reasoning?: string;
+  urgency?: 'critical' | 'high' | 'medium' | 'low' | 'expired';
+  days_left?: number;
+  urgency_label?: string;
+}
+
+export interface NotificationsSummary {
+  postponed: number;
+  new: number;
+  deadlines: number;
+  items: NotificationItem[];
+}
+
 export interface ChatResponse {
   answer_ar: string;
   answer_en: string;
@@ -79,8 +107,13 @@ export const getTenders = async (params?: {
   lang?: string;
   from_date?: string;
   to_date?: string;
+  sector?: string;
+  status?: string;
+  value_min?: number;
+  value_max?: number;
+  urgency?: string;
 }): Promise<Tender[]> => {
-  const { data } = await api.get("/api/tenders/", { params });
+  const { data } = await api.get("/api/tenders", { params });
   return data;
 };
 
@@ -136,5 +169,13 @@ export const askQuestion = async (
     lang,
     limit: limit || 5,
   });
+  return data;
+};
+
+export const getNotifications = async (params?: {
+  limit?: number;
+  enrich_with_ai?: boolean;
+}): Promise<NotificationsSummary> => {
+  const { data} = await api.get("/api/notifications", { params });
   return data;
 };

@@ -6,6 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.db.session import get_db
 from app.models.tender import Tender
+from app.services.relevance_scorer import relevance_scorer
 
 
 router = APIRouter()
@@ -21,6 +22,17 @@ class NotificationItem(BaseModel):
     reason: Optional[str]  # For postponed tenders
     type: str  # 'postponed', 'new', 'deadline'
     
+    # AI-powered fields
+    relevance_score: Optional[str] = None  # 'very_high', 'high', 'medium', 'low'
+    confidence: Optional[float] = None
+    keywords: Optional[List[str]] = None
+    sectors: Optional[List[str]] = None
+    recommended_team: Optional[str] = None
+    reasoning: Optional[str] = None
+    urgency: Optional[str] = None  # 'critical', 'high', 'medium', 'low'
+    days_left: Optional[int] = None
+    urgency_label: Optional[str] = None
+    
     class Config:
         from_attributes = True
 
@@ -32,9 +44,39 @@ class NotificationsSummary(BaseModel):
     items: List[NotificationItem]
 
 
+def enrich_notification_with_ai(tender: Tender) -> dict:
+    """Enrich tender notification with AI-powered relevance scoring"""
+    try:
+        # Get AI relevance scoring
+        relevance_data = relevance_scorer.score_tender_relevance(
+            tender_title=tender.title or "",
+            tender_body=tender.body or "",
+            ministry=tender.ministry
+        )
+        
+        # Calculate urgency
+        urgency_data = relevance_scorer.calculate_urgency(tender.deadline)
+        
+        return {
+            "relevance_score": relevance_data.get("relevance_score"),
+            "confidence": relevance_data.get("confidence"),
+            "keywords": relevance_data.get("keywords", []),
+            "sectors": relevance_data.get("sectors", []),
+            "recommended_team": relevance_data.get("recommended_team"),
+            "reasoning": relevance_data.get("reasoning"),
+            "urgency": urgency_data.get("urgency"),
+            "days_left": urgency_data.get("days_left"),
+            "urgency_label": urgency_data.get("label")
+        }
+    except Exception as e:
+        print(f"⚠️  AI enrichment failed for tender {tender.id}: {e}")
+        return {}
+
+
 @router.get("/", response_model=NotificationsSummary)
 async def get_notifications(
     limit: int = 20,
+    enrich_with_ai: bool = True,
     db: Session = Depends(get_db)
 ):
     """
@@ -44,6 +86,10 @@ async def get_notifications(
     - Postponed: Tenders with deadline changes
     - New: Tenders published in last 7 days
     - Deadlines: Tenders with deadlines in next 14 days
+    
+    Args:
+        limit: Max number of items to return
+        enrich_with_ai: Add AI-powered relevance scoring (slower but more insightful)
     """
     try:
         # Use timezone-aware datetime to prevent comparison errors
@@ -84,6 +130,7 @@ async def get_notifications(
         ).limit(limit // 3).all()
         
         for tender in postponed_items:
+            ai_data = enrich_notification_with_ai(tender) if enrich_with_ai else {}
             items.append(NotificationItem(
                 id=tender.id,
                 title=tender.title or "Untitled",
@@ -92,7 +139,8 @@ async def get_notifications(
                 deadline=tender.deadline.isoformat() if tender.deadline else None,
                 published_at=tender.published_at.isoformat() if tender.published_at else None,
                 reason=tender.postponement_reason,
-                type='postponed'
+                type='postponed',
+                **ai_data
             ))
         
         # Get new items - with null check
@@ -106,6 +154,7 @@ async def get_notifications(
         ).limit(limit // 3).all()
         
         for tender in new_items:
+            ai_data = enrich_notification_with_ai(tender) if enrich_with_ai else {}
             items.append(NotificationItem(
                 id=tender.id,
                 title=tender.title or "Untitled",
@@ -114,7 +163,8 @@ async def get_notifications(
                 deadline=tender.deadline.isoformat() if tender.deadline else None,
                 published_at=tender.published_at.isoformat() if tender.published_at else None,
                 reason=None,
-                type='new'
+                type='new',
+                **ai_data
             ))
         
         # Get deadline items
@@ -129,6 +179,7 @@ async def get_notifications(
         ).limit(limit // 3).all()
         
         for tender in deadline_items:
+            ai_data = enrich_notification_with_ai(tender) if enrich_with_ai else {}
             items.append(NotificationItem(
                 id=tender.id,
                 title=tender.title or "Untitled",
@@ -137,7 +188,8 @@ async def get_notifications(
                 deadline=tender.deadline.isoformat() if tender.deadline else None,
                 published_at=tender.published_at.isoformat() if tender.published_at else None,
                 reason=None,
-                type='deadline'
+                type='deadline',
+                **ai_data
             ))
         
         # Sort all items by published date (most recent first)

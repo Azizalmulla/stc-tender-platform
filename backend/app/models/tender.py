@@ -55,6 +55,8 @@ class Tender(Base):
         Index('idx_tenders_deadline', 'deadline'),
         Index('idx_tenders_ministry', 'ministry'),
         Index('idx_tenders_category', 'category'),
+        Index('idx_tenders_sector', 'sector'),
+        Index('idx_tenders_status', 'status'),
     )
 
 

@@ -19,6 +19,10 @@ export default function HomePage() {
   const [filters, setFilters] = useState({
     ministry: "",
     category: "",
+    sector: "",
+    status: "",
+    value_range: "",
+    urgency: "",
   });
   const [selectedTenders, setSelectedTenders] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
@@ -29,6 +33,11 @@ export default function HomePage() {
       getTenders({
         ministry: filters.ministry || undefined,
         category: filters.category || undefined,
+        sector: filters.sector || undefined,
+        status: filters.status || undefined,
+        value_min: filters.value_range === "under_100k" ? undefined : filters.value_range === "100k_1m" ? 100000 : filters.value_range === "over_1m" ? 1000000 : undefined,
+        value_max: filters.value_range === "under_100k" ? 100000 : filters.value_range === "100k_1m" ? 1000000 : undefined,
+        urgency: filters.urgency || undefined,
         limit: 50,
       }),
   });
@@ -197,24 +206,101 @@ export default function HomePage() {
             )}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1">
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Ministry Search */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                {t("Ministry / Entity", "الوزارة / الجهة")}
+              </label>
               <Input
                 placeholder={t("Search by ministry...", "ابحث حسب الوزارة...")}
                 value={filters.ministry}
                 onChange={(e) => setFilters({ ...filters, ministry: e.target.value })}
               />
             </div>
-            <div className="flex gap-2">
-              {filters.ministry || filters.category ? (
+
+            {/* Sector Filter */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                {t("Sector", "القطاع")}
+              </label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={filters.sector}
+                onChange={(e) => setFilters({ ...filters, sector: e.target.value })}
+              >
+                <option value="">{t("All Sectors", "جميع القطاعات")}</option>
+                <option value="Telecom infrastructure">{t("Telecom infrastructure", "بنية الاتصالات التحتية")}</option>
+                <option value="Data center & cloud">{t("Data center & cloud", "مركز البيانات والسحابة")}</option>
+                <option value="Contact center / call center">{t("Contact center / call center", "مركز الاتصال / مركز المكالمات")}</option>
+                <option value="Networking & security">{t("Networking & security", "الشبكات والأمن")}</option>
+                <option value="Smart city / IoT">{t("Smart city / IoT", "المدينة الذكية / إنترنت الأشياء")}</option>
+              </select>
+            </div>
+
+            {/* Status Filter */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                {t("Status", "الحالة")}
+              </label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+              >
+                <option value="">{t("All Statuses", "جميع الحالات")}</option>
+                <option value="Released">{t("Open", "مفتوحة")}</option>
+                <option value="Closed">{t("Closed", "مغلقة")}</option>
+                <option value="Awarded">{t("Awarded", "تم الترسية")}</option>
+                <option value="Cancelled">{t("Cancelled", "ملغاة")}</option>
+              </select>
+            </div>
+
+            {/* Value Range Filter */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                {t("Value Range (KD)", "نطاق القيمة (د.ك)")}
+              </label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={filters.value_range}
+                onChange={(e) => setFilters({ ...filters, value_range: e.target.value })}
+              >
+                <option value="">{t("All Values", "جميع القيم")}</option>
+                <option value="under_100k">{t("< 100K KD", "< 100 ألف د.ك")}</option>
+                <option value="100k_1m">{t("100K - 1M KD", "100 ألف - 1 مليون د.ك")}</option>
+                <option value="over_1m">{t("1M+ KD", "1 مليون+ د.ك")}</option>
+              </select>
+            </div>
+
+            {/* Urgency Filter */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                {t("Urgency", "الاستعجال")}
+              </label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={filters.urgency}
+                onChange={(e) => setFilters({ ...filters, urgency: e.target.value })}
+              >
+                <option value="">{t("All Deadlines", "جميع المواعيد")}</option>
+                <option value="7_days">{t("Deadline < 7 days", "الموعد < 7 أيام")}</option>
+                <option value="14_days">{t("Deadline < 14 days", "الموعد < 14 يوم")}</option>
+              </select>
+            </div>
+
+            {/* Clear Filters Button */}
+            <div className="flex items-end">
+              {(filters.ministry || filters.category || filters.sector || filters.status || filters.value_range || filters.urgency) && (
                 <Button
                   variant="outline"
-                  onClick={() => setFilters({ ministry: "", category: "" })}
+                  className="w-full"
+                  onClick={() => setFilters({ ministry: "", category: "", sector: "", status: "", value_range: "", urgency: "" })}
                 >
                   {t("Clear Filters", "مسح الفلاتر")}
                 </Button>
-              ) : null}
+              )}
             </div>
           </div>
           

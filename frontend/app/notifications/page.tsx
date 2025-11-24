@@ -1,47 +1,27 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { getTenders } from "@/lib/api";
-import { ModernTenderCard } from "@/components/tenders/ModernTenderCard";
+import { getNotifications } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Bell, AlertTriangle, Clock, TrendingUp, Calendar } from "lucide-react";
+import { Bell, AlertTriangle, Clock, TrendingUp } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { formatDate } from "@/lib/utils";
+import { NotificationCard } from "@/components/notifications/NotificationCard";
 
 export default function NotificationsPage() {
+
   const { t, language } = useLanguage();
 
-  // Fetch all tenders (backend max limit is 100)
-  const { data: tenders, isLoading, error } = useQuery({
-    queryKey: ["all-tenders-notifications"],
-    queryFn: () => getTenders({ limit: 100 }),
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => getNotifications({ limit: 50, enrich_with_ai: true }),
   });
 
-  // Filter postponed tenders
-  const postponedTenders = tenders?.filter(t => t.is_postponed) || [];
-  
-  // Filter recent tenders (last 7 days)
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const recentTenders = tenders?.filter(t => 
-    t.published_at && new Date(t.published_at) > sevenDaysAgo
-  ).sort((a, b) => 
-    new Date(b.published_at!).getTime() - new Date(a.published_at!).getTime()
-  ) || [];
-
-  // Filter upcoming deadlines (next 14 days)
-  const now = new Date();
-  const fourteenDaysLater = new Date();
-  fourteenDaysLater.setDate(now.getDate() + 14);
-  const upcomingDeadlines = tenders?.filter(t => 
-    t.deadline && 
-    new Date(t.deadline) > now && 
-    new Date(t.deadline) < fourteenDaysLater
-  ).sort((a, b) => 
-    new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
-  ) || [];
+  const notifications = data?.items || [];
+  const postponedCount = data?.postponed ?? 0;
+  const newCount = data?.new ?? 0;
+  const deadlinesCount = data?.deadlines ?? 0;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -72,7 +52,7 @@ export default function NotificationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-red-600">
-              {postponedTenders.length}
+              {postponedCount}
             </div>
           </CardContent>
         </Card>
@@ -86,7 +66,7 @@ export default function NotificationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-green-600">
-              {recentTenders.length}
+              {newCount}
             </div>
           </CardContent>
         </Card>
@@ -100,7 +80,7 @@ export default function NotificationsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-orange-600">
-              {upcomingDeadlines.length}
+              {deadlinesCount}
             </div>
           </CardContent>
         </Card>
@@ -129,91 +109,14 @@ export default function NotificationsPage() {
 
       {/* Content */}
       {!isLoading && !error && (
-        <div className="space-y-8">
-          {/* Postponed Tenders */}
-          {postponedTenders.length > 0 && (
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <AlertTriangle className="h-6 w-6 text-red-600" />
-                <h2 className="text-2xl font-bold">
-                  {t("Postponed Tenders", "المناقصات المؤجلة")}
-                </h2>
-                <Badge variant="destructive">{postponedTenders.length}</Badge>
-              </div>
-              <div className="space-y-4">
-                {postponedTenders.map((tender) => (
-                  <div key={tender.id}>
-                    <ModernTenderCard tender={tender} />
-                    {tender.postponement_reason && (
-                      <Card className="mt-2 border-red-200 bg-red-50">
-                        <CardContent className="p-3 text-sm">
-                          <span className="font-semibold">
-                            {t("Reason:", "السبب:")}
-                          </span>{" "}
-                          {tender.postponement_reason}
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
-                ))}
-              </div>
+        <div className="space-y-4">
+          {notifications.length > 0 ? (
+            <div className="space-y-4">
+              {notifications.map((notification) => (
+                <NotificationCard key={notification.id} notification={notification} />
+              ))}
             </div>
-          )}
-
-          {/* Upcoming Deadlines */}
-          {upcomingDeadlines.length > 0 && (
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <Clock className="h-6 w-6 text-orange-600" />
-                <h2 className="text-2xl font-bold">
-                  {t("Upcoming Deadlines (Next 14 Days)", "المواعيد القادمة (14 يوماً)")}
-                </h2>
-                <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                  {upcomingDeadlines.length}
-                </Badge>
-              </div>
-              <div className="space-y-4">
-                {upcomingDeadlines.map((tender) => (
-                  <div key={tender.id} className="relative">
-                    <ModernTenderCard tender={tender} />
-                    {tender.deadline && (
-                      <div className="absolute top-4 right-4">
-                        <Badge variant="outline" className="border-orange-600 text-orange-600">
-                          <Calendar className="h-3 w-3 mr-1" />
-                          {formatDate(tender.deadline)}
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Recent Tenders */}
-          {recentTenders.length > 0 && (
-            <div>
-              <div className="flex items-center gap-3 mb-4">
-                <TrendingUp className="h-6 w-6 text-green-600" />
-                <h2 className="text-2xl font-bold">
-                  {t("Recent Tenders (Last 7 Days)", "المناقصات الأخيرة (آخر 7 أيام)")}
-                </h2>
-                <Badge variant="secondary" className="bg-green-100 text-green-800">
-                  {recentTenders.length}
-                </Badge>
-              </div>
-              <div className="space-y-4">
-                {recentTenders.map((tender) => (
-                  <ModernTenderCard key={tender.id} tender={tender} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty State */}
-          {postponedTenders.length === 0 && 
-           recentTenders.length === 0 && 
-           upcomingDeadlines.length === 0 && (
+          ) : (
             <Card className="border-dashed">
               <CardContent className="p-12 text-center">
                 <Bell className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
