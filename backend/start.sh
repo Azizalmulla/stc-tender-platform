@@ -22,4 +22,4 @@ echo "⚠️  Skipping Alembic migrations (broken chain - will fix later)"
 echo "✅ All database schema updates applied via SQL"
 
 echo "Starting application..."
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
+uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
