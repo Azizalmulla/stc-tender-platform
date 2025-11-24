@@ -1,7 +1,20 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
 from app.api import tenders, search, chat, cron, notifications, meetings, export
+
+
+class ProxyHeadersMiddleware(BaseHTTPMiddleware):
+    """Force HTTPS scheme from proxy headers - fixes Render HTTPS redirect issue"""
+    async def dispatch(self, request: Request, call_next):
+        # Trust X-Forwarded-Proto from Render proxy
+        forwarded_proto = request.headers.get("x-forwarded-proto", "")
+        if forwarded_proto == "https":
+            # Override the scheme to https
+            request.scope["scheme"] = "https"
+        response = await call_next(request)
+        return response
 
 
 app = FastAPI(
@@ -10,6 +23,9 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc"
 )
+
+# Add proxy headers middleware FIRST (before CORS)
+app.add_middleware(ProxyHeadersMiddleware)
 
 # CORS - Allow frontend from Vercel and localhost
 app.add_middleware(
