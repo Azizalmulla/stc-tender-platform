@@ -2,8 +2,17 @@ import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Debug: Log what we got from environment
+if (typeof window !== 'undefined') {
+  console.log('🔧 Raw API_URL from env:', API_URL);
+}
+
 // Force HTTPS in production
 const SAFE_API_URL = API_URL.replace(/^http:\/\/(?!localhost)/, "https://");
+
+if (typeof window !== 'undefined') {
+  console.log('🔒 Safe API_URL:', SAFE_API_URL);
+}
 
 export const api = axios.create({
   baseURL: SAFE_API_URL,
@@ -12,6 +21,17 @@ export const api = axios.create({
   },
   maxRedirects: 5,
   validateStatus: (status) => status < 500, // Accept redirects
+});
+
+// Force HTTPS on every request (belt and suspenders approach)
+api.interceptors.request.use((config) => {
+  if (config.baseURL && config.baseURL.startsWith('http://') && !config.baseURL.includes('localhost')) {
+    config.baseURL = config.baseURL.replace('http://', 'https://');
+  }
+  console.log('📤 Request URL:', (config.baseURL || '') + (config.url || ''));
+  return config;
+}, (error) => {
+  return Promise.reject(error);
 });
 
 // Types
