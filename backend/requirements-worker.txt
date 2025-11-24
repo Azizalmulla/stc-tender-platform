@@ -12,8 +12,9 @@ redis==5.0.1
 rq==1.16.2
 tenacity==9.0.0
 
-# AI
-anthropic==0.39.0
+# AI (matching backend versions for compatibility)
+anthropic>=0.74.0
+httpx>=0.28.1
 
 # Core utilities
 python-dotenv==1.0.1
