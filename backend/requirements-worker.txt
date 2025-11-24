@@ -1,0 +1,20 @@
+# Worker Requirements (Minimal - No OCR/PDF Processing)
+# Only what's needed for background AI enrichment jobs
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+alembic==1.13.1
+
+# Redis & Task Queue
+redis==5.0.1
+rq==1.16.2
+tenacity==9.0.0
+
+# AI
+anthropic==0.39.0
+
+# Core utilities
+python-dotenv==1.0.1
+pydantic>=2.0.0
+pydantic-settings==2.1.0
