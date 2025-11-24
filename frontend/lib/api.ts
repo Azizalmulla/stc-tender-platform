@@ -2,11 +2,16 @@ import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+// Force HTTPS in production
+const SAFE_API_URL = API_URL.replace(/^http:\/\/(?!localhost)/, "https://");
+
 export const api = axios.create({
-  baseURL: API_URL,
+  baseURL: SAFE_API_URL,
   headers: {
     "Content-Type": "application/json",
   },
+  maxRedirects: 5,
+  validateStatus: (status) => status < 500, // Accept redirects
 });
 
 // Types
