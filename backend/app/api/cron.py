@@ -360,6 +360,13 @@ def run_scrape_task():
                 db.add(tender_embedding)
                 db.commit()
                 
+                # Enrich with AI in background (non-blocking)
+                try:
+                    from app.services.ai_enrichment import enrich_tender_with_ai
+                    enrich_tender_with_ai(tender.id, db)
+                except Exception as ai_error:
+                    print(f"⚠️  AI enrichment skipped for tender {tender.id}: {ai_error}")
+                
                 processed += 1
                 
             except Exception as e:
@@ -547,6 +554,86 @@ async def cleanup_capt_tenders(authorization: Optional[str] = Header(None)):
         
     except Exception as e:
         print(f"❌ Error during CAPT tender cleanup: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/enrich_tenders")
+async def enrich_tenders_endpoint(
+    background_tasks: BackgroundTasks,
+    limit: int = 50,
+    secret: str = None,
+    use_queue: bool = True
+):
+    """
+    Process existing tenders with AI enrichment (queued jobs)
+    
+    Uses Redis task queue for reliable processing:
+    - Each tender = separate job
+    - Automatic retries on failure
+    - Rate limiting prevents Claude errors
+    - Progress saved incrementally
+    
+    Args:
+        limit: Max number of tenders to process (default: 50)
+        secret: Authorization secret
+        use_queue: Use task queue (recommended) or run synchronously
+    """
+    if secret != settings.CRON_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    from app.db.session import SessionLocal
+    from app.models.tender import Tender
+    from app.core.redis_config import default_queue
+    from app.workers.tender_tasks import enqueue_tender_enrichment
+    
+    # Get unprocessed tenders
+    db = SessionLocal()
+    try:
+        unprocessed = db.query(Tender.id).filter(
+            Tender.ai_processed_at.is_(None)
+        ).order_by(
+            Tender.created_at.desc()
+        ).limit(limit).all()
+        
+        tender_ids = [t.id for t in unprocessed]
+        
+        if not tender_ids:
+            return {
+                "status": "no_work",
+                "message": "No unprocessed tenders found"
+            }
+        
+        # Enqueue jobs
+        if use_queue and default_queue:
+            result = enqueue_tender_enrichment(tender_ids, queue=default_queue)
+            return {
+                "status": "queued",
+                "total_tenders": len(tender_ids),
+                "job_info": result,
+                "message": f"Queued {len(tender_ids)} tenders for AI enrichment. Jobs will process with rate limiting."
+            }
+        else:
+            # Fallback: synchronous processing
+            def run_enrichment():
+                try:
+                    from app.services.ai_enrichment import enrich_unprocessed_tenders
+                    count = enrich_unprocessed_tenders(db, limit=limit)
+                    print(f"✅ AI enrichment complete: {count} tenders processed")
+                except Exception as e:
+                    print(f"❌ AI enrichment error: {e}")
+                finally:
+                    db.close()
+            
+            background_tasks.add_task(run_enrichment)
+            
+            return {
+                "status": "processing_sync",
+                "total_tenders": len(tender_ids),
+                "message": f"Processing {len(tender_ids)} tenders synchronously (no task queue available)"
+            }
+            
+    except Exception as e:
+        db.close()
         raise HTTPException(status_code=500, detail=str(e))
 
 

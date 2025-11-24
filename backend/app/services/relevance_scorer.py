@@ -86,27 +86,67 @@ Return JSON only:
   "reasoning": "Tender requires fiber optic network infrastructure with MPLS and managed services - core STC Enterprise capabilities for government sector."
 }}"""
 
-            # Call Claude
+            # Call Claude with STRUCTURED OUTPUTS (guaranteed valid JSON)
             response = self.claude.client.messages.create(
                 model=self.claude.model,
                 max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}]
+                timeout=30.0,  # Explicit timeout
+                messages=[{"role": "user", "content": prompt}],
+                tools=[{
+                    "name": "score_tender_relevance",
+                    "description": "Analyze tender relevance to STC's business",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "relevance_score": {
+                                "type": "string",
+                                "enum": ["very_high", "high", "medium", "low"],
+                                "description": "Overall relevance level"
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1,
+                                "description": "Confidence score 0-1"
+                            },
+                            "keywords": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "maxItems": 5,
+                                "description": "Key technical terms found"
+                            },
+                            "sectors": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Matching STC business sectors"
+                            },
+                            "recommended_team": {
+                                "type": "string",
+                                "description": "Which STC team should handle this"
+                            },
+                            "reasoning": {
+                                "type": "string",
+                                "description": "Brief explanation (1-2 sentences)"
+                            }
+                        },
+                        "required": ["relevance_score", "confidence", "keywords", "reasoning"]
+                    }
+                }],
+                tool_choice={"type": "tool", "name": "score_tender_relevance"}
             )
             
-            # Parse response
-            response_text = response.content[0].text.strip()
-            
-            # Extract JSON (handle markdown code blocks)
-            if "```json" in response_text:
-                json_start = response_text.find("```json") + 7
-                json_end = response_text.find("```", json_start)
-                response_text = response_text[json_start:json_end].strip()
-            elif "```" in response_text:
-                json_start = response_text.find("```") + 3
-                json_end = response_text.find("```", json_start)
-                response_text = response_text[json_start:json_end].strip()
-            
-            result = json.loads(response_text)
+            # Extract structured result (guaranteed valid!)
+            tool_use = next((block for block in response.content if block.type == "tool_use"), None)
+            if tool_use:
+                result = tool_use.input  # Already a dict, no JSON parsing needed!
+            else:
+                # Fallback to text parsing (shouldn't happen with tool_choice)
+                response_text = response.content[0].text.strip()
+                if "```json" in response_text:
+                    json_start = response_text.find("```json") + 7
+                    json_end = response_text.find("```", json_start)
+                    response_text = response_text[json_start:json_end].strip()
+                result = json.loads(response_text)
             
             print(f"✅ Relevance scored: {result.get('relevance_score')} ({result.get('confidence', 0):.0%} confidence)")
             return result

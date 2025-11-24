@@ -45,16 +45,36 @@ class NotificationsSummary(BaseModel):
 
 
 def enrich_notification_with_ai(tender: Tender) -> dict:
-    """Enrich tender notification with AI-powered relevance scoring"""
+    """
+    Get pre-computed AI enrichment data from database (instant!)
+    Falls back to real-time AI if not yet processed.
+    """
     try:
-        # Get AI relevance scoring
+        # Check if tender has pre-computed AI data
+        if tender.ai_processed_at:
+            # Use pre-computed data from database ✅ FAST!
+            urgency_data = relevance_scorer.calculate_urgency(tender.deadline)
+            
+            return {
+                "relevance_score": tender.ai_relevance_score,
+                "confidence": tender.ai_confidence,
+                "keywords": tender.ai_keywords or [],
+                "sectors": tender.ai_sectors or [],
+                "recommended_team": tender.ai_recommended_team,
+                "reasoning": tender.ai_reasoning,
+                "urgency": urgency_data.get("urgency"),
+                "days_left": urgency_data.get("days_left"),
+                "urgency_label": urgency_data.get("label")
+            }
+        
+        # Fallback: Compute real-time (slow, but ensures we always have data)
+        print(f"⚠️  Tender {tender.id} not yet AI-processed, computing now...")
         relevance_data = relevance_scorer.score_tender_relevance(
             tender_title=tender.title or "",
             tender_body=tender.body or "",
             ministry=tender.ministry
         )
         
-        # Calculate urgency
         urgency_data = relevance_scorer.calculate_urgency(tender.deadline)
         
         return {

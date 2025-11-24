@@ -16,6 +16,10 @@ psql $DATABASE_URL -f create_conversations_table.sql || echo "Conversations tabl
 echo "Adding STC export fields..."
 psql $DATABASE_URL -f add_stc_export_fields.sql || echo "STC fields migration failed or already applied"
 
+# Add AI enrichment fields
+echo "Adding AI enrichment fields..."
+psql $DATABASE_URL -f add_ai_enrichment_fields.sql || echo "AI enrichment fields migration failed or already applied"
+
 # Skip Alembic for now - it has a broken migration chain
 # We'll fix it properly later, but for now all necessary columns are added via SQL
 echo "⚠️  Skipping Alembic migrations (broken chain - will fix later)"

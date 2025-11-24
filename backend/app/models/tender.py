@@ -50,6 +50,15 @@ class Tender(Base):
     justification = Column(String)
     announcement_type = Column(String)  # Awarding, Complaint, Opening Envelopes, etc.
     
+    # AI Enrichment fields (background processed)
+    ai_relevance_score = Column(String)  # very_high, high, medium, low
+    ai_confidence = Column(REAL)  # 0.0 to 1.0
+    ai_keywords = Column(ARRAY(Text))  # Technical keywords extracted
+    ai_sectors = Column(ARRAY(Text))  # Matching STC sectors
+    ai_recommended_team = Column(String)  # Which STC team should handle this
+    ai_reasoning = Column(Text)  # Why it's relevant/not relevant
+    ai_processed_at = Column(TIMESTAMP(timezone=True))  # When AI analysis was done
+    
     __table_args__ = (
         Index('idx_tenders_published_at', 'published_at'),
         Index('idx_tenders_deadline', 'deadline'),

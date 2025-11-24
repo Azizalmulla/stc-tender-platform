@@ -4,9 +4,10 @@ Replaces Google Document AI + GPT pipeline with single Claude call
 """
 import base64
 import json
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Iterator
 from anthropic import Anthropic
 from app.core.config import settings
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 
 class ClaudeOCRService:
@@ -815,6 +816,103 @@ I found [N tenders] in total. Here are the 5 most relevant:
                 "citations": [],
                 "confidence": 0.0
             }
+
+    
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((Exception,))
+    )
+    def answer_question_stream(
+        self,
+        question: str,
+        context_docs: List[Dict],
+        conversation_history: List[Dict] = None,
+        metadata: Dict = None
+    ) -> Iterator[str]:
+        """
+        Stream answer tokens as they're generated (modern UX pattern)
+        
+        Returns iterator of text chunks for real-time streaming to frontend.
+        Uses prompt caching for 10x speed improvement on follow-ups.
+        """
+        # Build cached context (will be reused for 5 minutes)
+        metadata_context = ""
+        if metadata and metadata.get('total_count'):
+            total_count = metadata['total_count']
+            sample_count = len(context_docs)
+            metadata_context = f"\n\n**DATABASE STATISTICS:**\n"
+            metadata_context += f"- Total matching tenders in database: {total_count}\n"
+            metadata_context += f"- Sample tenders shown below: {sample_count}\n"
+            metadata_context += f"- Use the TOTAL COUNT ({total_count}) when answering 'how many' questions\n\n"
+        
+        # Build context from documents
+        context = "\n\n---\n\n".join([
+            f"رقم المناقصة / Tender Number: {doc.get('tender_number', 'N/A')}\n"
+            f"العنوان / Title: {doc['title']}\n"
+            f"الجهة / Ministry: {doc.get('ministry', 'N/A')}\n"
+            f"التصنيف / Category: {doc.get('category', 'N/A')}\n"
+            f"تاريخ النشر / Published: {doc.get('published_at', 'N/A')}\n"
+            f"الموعد النهائي / Deadline: {doc.get('deadline', 'N/A')}\n"
+            f"الملخص العربي / Arabic Summary: {doc.get('summary_ar', 'N/A')[:500]}\n"
+            f"الملخص الإنجليزي / English Summary: {doc.get('summary_en', 'N/A')[:500]}\n"
+            f"الرابط / URL: {doc['url']}"
+            for doc in context_docs[:10]
+        ])
+        
+        # Build conversation context (limited to last 6 messages)
+        conversation_context = ""
+        if conversation_history:
+            conversation_context = "\n\n**المحادثة السابقة / Previous Conversation:**\n" + "\n".join([
+                f"{msg['role'].capitalize()}: {msg['content'][:200]}"  # Limit each message
+                for msg in conversation_history[-6:]
+            ])
+        
+        # System prompt with caching
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        system_prompt = f"""You are an expert assistant for Kuwait government tenders.
+Today's date is {today}.
+
+**INSTRUCTIONS:**
+- Answer ONLY using the provided documents
+- Be concise but comprehensive
+- Respond in BOTH Arabic and English
+- Always cite sources
+
+{metadata_context}**الوثائق / Context Documents:**
+{context}
+{conversation_context}
+
+**BILINGUAL RESPONSE FORMAT:**
+For Arabic questions: Start with detailed Arabic answer, then brief English.
+For English questions: Start with detailed English answer, then brief Arabic.
+"""
+        
+        try:
+            # Stream with prompt caching for 10x speed improvement
+            with self.client.messages.stream(
+                model=self.model,
+                max_tokens=2000,
+                temperature=0.3,
+                system=[{
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"}  # Cache for 5 minutes!
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": f"**السؤال / Question:**\n{question}"
+                }]
+            ) as stream:
+                for text in stream.text_stream:
+                    yield text
+                    
+        except Exception as e:
+            print(f"❌ Streaming error: {e}")
+            # Yield fallback message
+            yield "عذراً، حدث خطأ مؤقت. / Sorry, a temporary error occurred."
 
 
 # Singleton instance

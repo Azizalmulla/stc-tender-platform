@@ -55,6 +55,12 @@ python-dateutil==2.8.2
 pytz==2024.1
 validators==0.22.0
 dateparser==1.2.0  # Parse Arabic dates for meeting extraction
+tenacity==9.0.0
+
+# Task queue for reliable background processing
+redis==5.0.1
+rq==1.16.2
+rq-scheduler==0.13.1  # Retry logic with exponential backoff (industry standard)
 
 # Monitoring
 sentry-sdk[fastapi]==1.40.0

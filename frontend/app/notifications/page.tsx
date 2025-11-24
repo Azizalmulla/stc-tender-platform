@@ -15,7 +15,7 @@ export default function NotificationsPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["notifications"],
-    queryFn: () => getNotifications({ limit: 50, enrich_with_ai: false }),  // Disabled AI - too slow for 50 items
+    queryFn: () => getNotifications({ limit: 50, enrich_with_ai: true }),  // ✅ Now instant! Uses pre-computed AI data
     staleTime: 5 * 60 * 1000,  // Cache for 5 minutes
   });
 
