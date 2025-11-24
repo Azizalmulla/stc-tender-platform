@@ -16,6 +16,10 @@ import logging
 from rq import Worker, Queue, Connection
 from app.core.redis_config import get_redis_connection
 
+# Preload worker tasks module so RQ can import functions
+# This ensures the module is available when jobs are executed
+import app.workers.tender_tasks  # noqa: F401
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
