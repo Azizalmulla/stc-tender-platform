@@ -1,9 +1,15 @@
 """
 Redis Configuration for Task Queue
 Handles connection to Redis for background job processing
+
+Best Practices:
+- Connection pooling for efficiency
+- Let RQ manage socket_timeout automatically (needs 415+ seconds for BLPOP)
+- TCP keepalive to prevent idle connection drops
+- Retry on timeout for transient network issues
 """
 import os
-from redis import Redis
+from redis import Redis, ConnectionPool
 from rq import Queue
 import logging
 
@@ -12,26 +18,40 @@ logger = logging.getLogger(__name__)
 
 def get_redis_connection():
     """
-    Get Redis connection with fallback to local development
+    Get Redis connection with connection pooling for production reliability
+    
+    Connection pooling provides:
+    - Reuse of connections (better performance)
+    - Automatic connection management
+    - Better handling of connection limits
     
     Returns:
-        Redis connection object
+        Redis connection object or None if connection fails
     """
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     
     try:
-        redis_conn = Redis.from_url(
+        # Create connection pool (production best practice)
+        pool = ConnectionPool.from_url(
             redis_url,
-            decode_responses=False,  # Keep bytes for compatibility
-            socket_connect_timeout=5,
-            socket_timeout=5,
+            decode_responses=False,  # Required by RQ
+            socket_connect_timeout=10,
+            socket_keepalive=True,  # Prevent idle timeouts
+            socket_keepalive_options={},
             retry_on_timeout=True,
-            health_check_interval=30
+            health_check_interval=30,
+            max_connections=50  # Limit pool size
+            # socket_timeout is NOT set - RQ manages it automatically
+            # RQ sets socket_timeout = dequeue_timeout + 10 (typically 415s)
+            # This allows BLPOP to wait for jobs without timing out
         )
+        
+        # Create Redis connection from pool
+        redis_conn = Redis(connection_pool=pool)
         
         # Test connection
         redis_conn.ping()
-        logger.info(f"✅ Redis connected: {redis_url}")
+        logger.info(f"✅ Redis connected with connection pool: {redis_url}")
         return redis_conn
         
     except Exception as e:
