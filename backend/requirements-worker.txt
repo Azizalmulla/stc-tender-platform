@@ -1,10 +1,10 @@
 # Worker Requirements (Minimal - No OCR/PDF Processing)
 # Only what's needed for background AI enrichment jobs
 
-# Database
-sqlalchemy==2.0.25
-psycopg2-binary==2.9.9
-alembic==1.13.1
+# Database (Python 3.13 compatible versions)
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+alembic==1.14.0
 
 # Redis & Task Queue
 redis==5.0.1
