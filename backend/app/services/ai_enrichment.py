@@ -57,7 +57,10 @@ def enrich_tender_with_ai(tender_id: int, db: Session) -> bool:
         # Commit and verify
         db.commit()
         db.refresh(tender)  # Refresh to ensure data is persisted
+        
+        # Verify data was actually saved
         logger.info(f"💾 Database commit successful for tender {tender_id}")
+        logger.info(f"📊 Saved data: score={tender.ai_relevance_score}, keywords={len(tender.ai_keywords or [])}, processed_at={tender.ai_processed_at}")
         
         logger.info(
             f"✅ Tender {tender_id} enriched: "

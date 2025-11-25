@@ -31,6 +31,14 @@ class TenderResponse(BaseModel):
     is_postponed: Optional[bool]
     original_deadline: Optional[datetime]
     postponement_reason: Optional[str]
+    # AI enrichment fields
+    ai_relevance_score: Optional[str]
+    ai_confidence: Optional[float]
+    ai_keywords: Optional[List[str]]
+    ai_sectors: Optional[List[str]]
+    ai_recommended_team: Optional[str]
+    ai_reasoning: Optional[str]
+    ai_processed_at: Optional[datetime]
     
     class Config:
         from_attributes = True
