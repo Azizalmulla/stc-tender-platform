@@ -54,7 +54,10 @@ def enrich_tender_with_ai(tender_id: int, db: Session) -> bool:
         tender.ai_reasoning = relevance_data.get("reasoning")
         tender.ai_processed_at = datetime.now(timezone.utc)
         
+        # Commit and verify
         db.commit()
+        db.refresh(tender)  # Refresh to ensure data is persisted
+        logger.info(f"💾 Database commit successful for tender {tender_id}")
         
         logger.info(
             f"✅ Tender {tender_id} enriched: "
