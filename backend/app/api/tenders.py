@@ -12,6 +12,7 @@ router = APIRouter()
 
 
 class TenderResponse(BaseModel):
+    """Tender response model with AI enrichment fields"""
     id: int
     url: str
     title: Optional[str]
