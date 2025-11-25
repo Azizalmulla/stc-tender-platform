@@ -141,7 +141,9 @@ def enrich_single_tender_task(tender_id: int) -> Dict:
         success = enrich_tender_with_ai(tender_id, db)
         
         if success:
-            logger.info(f"✅ AI enrichment completed for tender {tender_id}")
+            # Double-check commit (enrichment service already commits, but ensure it's flushed)
+            db.commit()
+            logger.info(f"✅ AI enrichment completed for tender {tender_id} (transaction committed)")
             return {
                 "status": "success",
                 "tender_id": tender_id,
@@ -149,6 +151,7 @@ def enrich_single_tender_task(tender_id: int) -> Dict:
             }
         else:
             logger.error(f"❌ AI enrichment failed for tender {tender_id}")
+            db.rollback()
             return {
                 "status": "error",
                 "tender_id": tender_id,
@@ -157,19 +160,22 @@ def enrich_single_tender_task(tender_id: int) -> Dict:
             
     except RateLimitError as e:
         logger.warning(f"⚠️  Rate limit hit for tender {tender_id}, will retry")
+        db.rollback()
         raise  # tenacity will retry
         
     except APITimeoutError as e:
         logger.warning(f"⚠️  Timeout for tender {tender_id}, will retry")
+        db.rollback()
         raise  # tenacity will retry
         
     except Exception as e:
         logger.error(f"❌ Failed AI enrichment for tender {tender_id}: {e}")
+        db.rollback()
         return {"status": "error", "message": str(e), "tender_id": tender_id}
         
     finally:
         batch_controller.release()
-        db.close()
+        db.close()  # Close session (already committed or rolled back above)
 
 
 def enqueue_tender_enrichment(tender_ids: list, queue=None) -> Dict:
