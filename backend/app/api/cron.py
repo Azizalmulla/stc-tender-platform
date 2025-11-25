@@ -387,6 +387,36 @@ def run_scrape_task():
         
         print(f"✅ Weekly scrape completed: {result}")
         
+        # 🤖 AUTOMATIC AI ENRICHMENT: Queue all newly processed tenders
+        if processed > 0:
+            print(f"🤖 Auto-queueing {processed} new tenders for AI enrichment...")
+            try:
+                # Get IDs of tenders without AI enrichment
+                from app.workers.tender_tasks import enqueue_tender_enrichment
+                from app.core.redis_config import get_task_queue
+                
+                db_new = SessionLocal()
+                unenriched_tenders = db_new.query(Tender).filter(
+                    Tender.ai_processed_at == None
+                ).order_by(Tender.id.desc()).limit(processed).all()
+                
+                tender_ids = [t.id for t in unenriched_tenders]
+                db_new.close()
+                
+                if tender_ids:
+                    queue = get_task_queue()
+                    if queue:
+                        job_info = enqueue_tender_enrichment(tender_ids, queue)
+                        print(f"✅ Queued {len(tender_ids)} tenders for AI enrichment: {job_info}")
+                    else:
+                        print(f"⚠️  Redis not available - AI enrichment skipped")
+                else:
+                    print(f"ℹ️  No new tenders to enrich")
+                    
+            except Exception as enrich_error:
+                print(f"⚠️  Failed to queue AI enrichment: {enrich_error}")
+                # Don't fail the whole scrape if enrichment queueing fails
+        
     except Exception as e:
         print(f"❌ Error in weekly scrape: {e}")
         # Don't raise HTTPException in background task - just log it
