@@ -229,18 +229,70 @@ async def hybrid_search(
     # Combine and deduplicate results
     combined_map = {}
     
-    # Add keyword results with base score
+    # Helper function to calculate keyword relevance score
+    def calculate_keyword_score(tender, query_lower):
+        """
+        Calculate relevance score based on keyword matches
+        
+        Scoring factors:
+        - Title match: 1.0 (highest priority)
+        - Summary match: 0.7
+        - Body match: 0.5
+        - Exact match: +0.2 bonus
+        - Multiple occurrences: +0.05 per occurrence (max +0.2)
+        """
+        score = 0.0
+        query_lower = query_lower.lower()
+        
+        # Title scoring (most important)
+        if tender.title:
+            title_lower = tender.title.lower()
+            if query_lower in title_lower:
+                score = 1.0  # Base score for title match
+                # Exact match bonus
+                if title_lower == query_lower or f" {query_lower} " in f" {title_lower} ":
+                    score += 0.2
+                # Count occurrences
+                occurrences = title_lower.count(query_lower)
+                if occurrences > 1:
+                    score += min(0.2, (occurrences - 1) * 0.05)
+                return min(score, 1.0)  # Cap at 1.0
+        
+        # Summary scoring (medium priority)
+        for summary in [tender.summary_ar, tender.summary_en]:
+            if summary:
+                summary_lower = summary.lower()
+                if query_lower in summary_lower:
+                    score = max(score, 0.7)
+                    occurrences = summary_lower.count(query_lower)
+                    if occurrences > 1:
+                        score += min(0.15, (occurrences - 1) * 0.03)
+        
+        # Body scoring (lowest priority, only if no better match)
+        if score < 0.5 and tender.body:
+            body_lower = tender.body.lower()
+            if query_lower in body_lower:
+                score = 0.5
+                occurrences = body_lower.count(query_lower)
+                if occurrences > 2:
+                    score += min(0.1, (occurrences - 2) * 0.02)
+        
+        return min(score, 1.0)  # Cap at 1.0
+    
+    # Add keyword results with calculated scores
+    query_lower = q.lower()
     for tender in keyword_results:
+        keyword_score = calculate_keyword_score(tender, query_lower)
         combined_map[tender.id] = {
             "tender": tender,
-            "score": 0.7  # Base keyword match score
+            "score": keyword_score
         }
     
     # Add/boost semantic results
     for tender, distance in semantic_results:
         semantic_score = 1 - distance
         if tender.id in combined_map:
-            # Boost existing result
+            # Boost existing result - take the maximum score
             combined_map[tender.id]["score"] = max(combined_map[tender.id]["score"], semantic_score)
         else:
             combined_map[tender.id] = {
