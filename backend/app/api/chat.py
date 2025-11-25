@@ -10,6 +10,7 @@ from app.models.tender import Tender, TenderEmbedding
 from app.models.conversation import Conversation, Message
 from app.ai.claude_service import claude_service
 from app.ai.voyage_service import voyage_service
+from app.core.cache import cache_manager
 
 
 router = APIRouter()
@@ -506,21 +507,37 @@ async def ask_question(
     ]
     
     # 9. Generate answer using Claude with context and conversation history
-    try:
-        answer_result = claude_service.answer_question(
-            request.question, 
-            context_docs,
-            conversation_history=conversation_history
-        )
-    except Exception as e:
-        print(f"❌ Error generating answer: {e}")
-        # Fallback response on AI error
-        answer_result = {
-            "answer_ar": "عذراً، حدث خطأ أثناء معالجة سؤالك. يرجى المحاولة مرة أخرى.",
-            "answer_en": "Sorry, an error occurred while processing your question. Please try again.",
-            "citations": [],
-            "confidence": 0.0
-        }
+    # Check cache first (only for questions without conversation history)
+    cache_key_question = request.question.lower().strip()
+    cached_answer = None
+    
+    if not conversation_history:  # Only cache first-time questions
+        cached_answer = cache_manager.get_cached_response(cache_key_question, request.lang or "ar")
+    
+    if cached_answer:
+        print(f"✅ Cache HIT - returning cached response")
+        answer_result = cached_answer
+    else:
+        try:
+            answer_result = claude_service.answer_question(
+                request.question, 
+                context_docs,
+                conversation_history=conversation_history
+            )
+            
+            # Cache the response (only for questions without conversation history)
+            if not conversation_history:
+                cache_manager.cache_response(cache_key_question, answer_result, request.lang or "ar")
+                
+        except Exception as e:
+            print(f"❌ Error generating answer: {e}")
+            # Fallback response on AI error
+            answer_result = {
+                "answer_ar": "عذراً، حدث خطأ أثناء معالجة سؤالك. يرجى المحاولة مرة أخرى.",
+                "answer_en": "Sorry, an error occurred while processing your question. Please try again.",
+                "citations": [],
+                "confidence": 0.0
+            }
     
     # 8. Save assistant message
     assistant_message = Message(
