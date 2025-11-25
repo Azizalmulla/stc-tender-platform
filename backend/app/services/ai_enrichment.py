@@ -45,9 +45,6 @@ def enrich_tender_with_ai(tender_id: int, db: Session) -> bool:
             ministry=tender.ministry
         )
         
-        # Debug: Log the actual data structure
-        logger.info(f"🔍 AI Response data: {relevance_data}")
-        
         # Update tender with AI results
         tender.ai_relevance_score = relevance_data.get("relevance_score")
         tender.ai_confidence = relevance_data.get("confidence")
@@ -57,16 +54,9 @@ def enrich_tender_with_ai(tender_id: int, db: Session) -> bool:
         tender.ai_reasoning = relevance_data.get("reasoning")
         tender.ai_processed_at = datetime.now(timezone.utc)
         
-        # Debug: Verify fields were set on the object
-        logger.info(f"🔧 Before commit - tender.ai_relevance_score={tender.ai_relevance_score}, tender.ai_processed_at={tender.ai_processed_at}")
-        
-        # Commit and verify
+        # Commit and persist
         db.commit()
-        db.refresh(tender)  # Refresh to ensure data is persisted
-        
-        # Verify data was actually saved
-        logger.info(f"💾 Database commit successful for tender {tender_id}")
-        logger.info(f"📊 Saved data: score={tender.ai_relevance_score}, keywords={len(tender.ai_keywords or [])}, processed_at={tender.ai_processed_at}")
+        db.refresh(tender)
         
         logger.info(
             f"✅ Tender {tender_id} enriched: "

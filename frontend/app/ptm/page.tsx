@@ -17,8 +17,8 @@ export default function PTMPage() {
     queryFn: () => getTenders({ limit: 100 }),
   });
 
-  // Filter tenders that have pre-tender meetings (meeting_date is not null)
-  const ptms = allTenders?.filter(t => t.meeting_date) || [];
+  // Filter tenders that have pre-tender meetings (meeting_date OR meeting_location exists)
+  const ptms = allTenders?.filter(t => t.meeting_date || t.meeting_location) || [];
 
   return (
     <div className="container mx-auto px-4 py-8">

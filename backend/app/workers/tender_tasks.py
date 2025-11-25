@@ -133,9 +133,7 @@ def enrich_single_tender_task(tender_id: int) -> Dict:
         # Acquire batch control slot
         batch_controller.acquire()
         
-        # Log database connection for debugging
-        db_url = str(db.bind.url).split('@')[-1] if db.bind else 'unknown'
-        logger.info(f"🤖 AI enrichment for tender {tender_id} (DB: ...{db_url})")
+        logger.info(f"🤖 AI enrichment for tender {tender_id}")
         
         # Call enrichment service
         success = enrich_tender_with_ai(tender_id, db)

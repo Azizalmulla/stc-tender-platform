@@ -118,7 +118,7 @@ export function ModernTenderCard({ tender, isSelected = false, onToggleSelection
         </div>
 
         {/* Dates */}
-        <div className="flex items-center gap-4 text-sm">
+        <div className="flex items-center gap-4 text-sm flex-wrap">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Calendar className="h-4 w-4" />
             <span>{formatDate(tender.published_at)}</span>
@@ -133,6 +133,28 @@ export function ModernTenderCard({ tender, isSelected = false, onToggleSelection
             </>
           )}
         </div>
+
+        {/* Pre-Tender Meeting Info */}
+        {(tender.meeting_date || tender.meeting_location) && (
+          <div className="flex items-start gap-2 text-sm p-3 bg-purple-50 dark:bg-purple-950/20 rounded-lg border border-purple-200 dark:border-purple-900">
+            <Users className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 space-y-1">
+              <div className="font-medium text-purple-900 dark:text-purple-100">
+                {t('Pre-Tender Meeting', 'اجتماع ما قبل المناقصة')}
+              </div>
+              {tender.meeting_date && (
+                <div className="text-purple-700 dark:text-purple-300">
+                  📅 {formatDate(tender.meeting_date)}
+                </div>
+              )}
+              {tender.meeting_location && (
+                <div className="text-purple-700 dark:text-purple-300">
+                  📍 {tender.meeting_location}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Summary */}
         {(language === 'en' ? tender.summary_en : tender.summary_ar) && (
