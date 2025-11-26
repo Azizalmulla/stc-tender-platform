@@ -4,7 +4,7 @@ Stores master Excel files in database for persistent storage
 """
 from sqlalchemy import Column, Integer, String, LargeBinary, DateTime, Text
 from sqlalchemy.sql import func
-from app.db.base import Base
+from app.db.session import Base
 
 
 class ExportFile(Base):
