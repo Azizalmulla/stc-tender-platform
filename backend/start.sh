@@ -20,6 +20,10 @@ psql $DATABASE_URL -f add_stc_export_fields.sql || echo "STC fields migration fa
 echo "Adding AI enrichment fields..."
 psql $DATABASE_URL -f add_ai_enrichment_fields.sql || echo "AI enrichment fields migration failed or already applied"
 
+# Add export tracking (STC Master Workbook feature)
+echo "Adding export tracking fields..."
+psql $DATABASE_URL -f add_export_tracking.sql || echo "Export tracking migration failed or already applied"
+
 # Skip Alembic for now - it has a broken migration chain
 # We'll fix it properly later, but for now all necessary columns are added via SQL
 echo "⚠️  Skipping Alembic migrations (broken chain - will fix later)"

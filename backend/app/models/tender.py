@@ -59,6 +59,9 @@ class Tender(Base):
     ai_reasoning = Column(Text)  # Why it's relevant/not relevant
     ai_processed_at = Column(TIMESTAMP(timezone=True))  # When AI analysis was done
     
+    # Export tracking (prevents duplicate exports)
+    exported_to_stc_at = Column(TIMESTAMP(timezone=True))  # When exported to STC Excel
+    
     __table_args__ = (
         Index('idx_tenders_published_at', 'published_at'),
         Index('idx_tenders_deadline', 'deadline'),

@@ -93,15 +93,18 @@ export default function HomePage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `STC_Tenders_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = "STC_Tenders_Master.xlsx";  // Always same filename - master file
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
       toast({
-        title: t("Export successful", "تم التصدير بنجاح"),
-        description: t(`Exported ${selectedTenders.size} tenders`, `تم تصدير ${selectedTenders.size} مناقصة`),
+        title: t("Master file updated", "تم تحديث الملف الرئيسي"),
+        description: t(
+          `Added ${selectedTenders.size} tenders to STC Master. Download the updated file.`,
+          `تمت إضافة ${selectedTenders.size} مناقصة إلى ملف STC الرئيسي. قم بتنزيل الملف المحدث.`
+        ),
       });
 
       setSelectedTenders(new Set()); // Clear selection

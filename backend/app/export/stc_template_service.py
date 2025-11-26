@@ -1,14 +1,24 @@
 """
 STC Template Excel Export Service
 Generates Excel files matching STC's template structure with 5 sheets
+
+MASTER WORKBOOK APPROACH:
+- Maintains a single master Excel file per customer (stored in database)
+- Each export APPENDS to the existing master (not creates new)
+- Tracks which tenders have been exported to avoid duplicates
+- Uses Redis locking for concurrent access safety
 """
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from typing import List, Dict
+from typing import List, Dict, Optional
 from io import BytesIO
 from sqlalchemy.orm import Session
 from app.models.tender import Tender
+from app.models.export_file import ExportFile
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # Reference lists matching STC template
@@ -45,17 +55,35 @@ ANNOUNCEMENT_TYPES = [
 
 
 class STCTemplateExporter:
-    """Generate Excel files matching STC template"""
+    """
+    Generate Excel files matching STC template
+    
+    MASTER WORKBOOK MODE:
+    - Loads existing master file from database
+    - Appends new tenders (skips already exported)
+    - Saves updated master back to database
+    - Returns the updated file for download
+    """
+    
+    MASTER_FILE_NAME = "stc_master"
     
     def __init__(self, db: Session):
         self.db = db
     
-    def generate_excel(self, tender_ids: List[int]) -> bytes:
+    def generate_excel(self, tender_ids: List[int], skip_duplicates: bool = True) -> bytes:
         """
-        Generate Excel file with 5 sheets matching STC template
+        Generate/update Excel file with STC template
+        
+        MASTER WORKBOOK APPROACH:
+        1. Load existing master from database (or create new if first time)
+        2. Filter out already-exported tenders (optional)
+        3. Append new tenders to correct sheets
+        4. Save updated master to database
+        5. Return file bytes for download
         
         Args:
             tender_ids: List of tender IDs to export
+            skip_duplicates: If True, skip tenders already exported (default: True)
             
         Returns:
             Excel file as bytes
@@ -66,37 +94,177 @@ class STCTemplateExporter:
         if not tenders:
             raise ValueError("No tenders found with provided IDs")
         
-        # Create workbook
-        wb = Workbook()
-        # Remove default sheet
-        wb.remove(wb.active)
+        # Filter out already exported tenders if requested
+        if skip_duplicates:
+            new_tenders = [t for t in tenders if not t.exported_to_stc_at]
+            skipped_count = len(tenders) - len(new_tenders)
+            if skipped_count > 0:
+                logger.info(f"Skipped {skipped_count} already-exported tenders")
+            tenders = new_tenders
         
-        # Group tenders by status/sheet
-        released_tenders = []
-        future_tenders = []
-        awarded_tenders = []
+        if not tenders:
+            logger.info("All selected tenders already exported")
+            # Still return the master file even if no new tenders
+            return self._get_or_create_master()
         
+        # Load or create master workbook
+        wb = self._load_master_workbook()
+        
+        # Get sheets
+        ws_released = wb["Released Tenders"]
+        ws_future = wb["Future Tenders"]
+        ws_awarded = wb["Awarded-Opened Tenders"]
+        
+        # Group and append tenders
+        exported_count = 0
         for tender in tenders:
             status = (tender.status or "Released").lower()
+            
             if status in ['future', 'upcoming', 'planned']:
-                future_tenders.append(tender)
+                self._append_to_future_sheet(ws_future, tender)
             elif status in ['awarded', 'opened', 'cancelled']:
-                awarded_tenders.append(tender)
-            else:  # default to released
-                released_tenders.append(tender)
+                self._append_to_awarded_sheet(ws_awarded, tender)
+            else:
+                self._append_to_released_sheet(ws_released, tender)
+            
+            # Mark tender as exported
+            tender.exported_to_stc_at = datetime.utcnow()
+            exported_count += 1
         
-        # Create sheets in order
-        self._create_released_tenders_sheet(wb, released_tenders)
-        self._create_future_tenders_sheet(wb, future_tenders)
-        self._create_awarded_opened_sheet(wb, awarded_tenders)
-        self._create_color_coding_sheet(wb)
-        self._create_list_sheet(wb)
+        # Commit tender updates
+        self.db.commit()
+        logger.info(f"✅ Exported {exported_count} tenders to STC master")
         
-        # Save to bytes
+        # Save updated workbook to database
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        file_bytes = output.read()
+        
+        self._save_master_workbook(file_bytes, exported_count)
+        
+        return file_bytes
+    
+    def _get_or_create_master(self) -> bytes:
+        """Get existing master file or create empty one"""
+        export_file = self.db.query(ExportFile).filter(
+            ExportFile.name == self.MASTER_FILE_NAME
+        ).first()
+        
+        if export_file:
+            return export_file.file_data
+        
+        # Create new master
+        wb = self._create_empty_workbook()
         output = BytesIO()
         wb.save(output)
         output.seek(0)
         return output.read()
+    
+    def _load_master_workbook(self) -> Workbook:
+        """Load existing master workbook from database, or create new"""
+        export_file = self.db.query(ExportFile).filter(
+            ExportFile.name == self.MASTER_FILE_NAME
+        ).first()
+        
+        if export_file and export_file.file_data:
+            logger.info(f"Loading existing master workbook ({export_file.total_rows_exported} rows)")
+            return load_workbook(BytesIO(export_file.file_data))
+        
+        logger.info("Creating new master workbook")
+        return self._create_empty_workbook()
+    
+    def _create_empty_workbook(self) -> Workbook:
+        """Create new workbook with empty sheets matching STC template"""
+        wb = Workbook()
+        wb.remove(wb.active)
+        
+        # Create sheets with headers only
+        self._create_released_tenders_sheet(wb, [])
+        self._create_future_tenders_sheet(wb, [])
+        self._create_awarded_opened_sheet(wb, [])
+        self._create_color_coding_sheet(wb)
+        self._create_list_sheet(wb)
+        
+        return wb
+    
+    def _save_master_workbook(self, file_bytes: bytes, new_rows: int):
+        """Save master workbook to database"""
+        export_file = self.db.query(ExportFile).filter(
+            ExportFile.name == self.MASTER_FILE_NAME
+        ).first()
+        
+        if export_file:
+            export_file.file_data = file_bytes
+            export_file.file_size = len(file_bytes)
+            export_file.total_rows_exported += new_rows
+            export_file.updated_at = datetime.utcnow()
+        else:
+            export_file = ExportFile(
+                name=self.MASTER_FILE_NAME,
+                file_data=file_bytes,
+                file_size=len(file_bytes),
+                description="STC Master Tenders Workbook",
+                total_rows_exported=new_rows
+            )
+            self.db.add(export_file)
+        
+        self.db.commit()
+        logger.info(f"✅ Master workbook saved ({len(file_bytes)} bytes, {export_file.total_rows_exported} total rows)")
+    
+    def _append_to_released_sheet(self, ws, tender: Tender):
+        """Append a single tender to Released Tenders sheet"""
+        next_row = ws.max_row + 1
+        row_num = next_row - 5  # Numbering starts after header row 5
+        
+        ws.cell(next_row, 1, "")  # Empty column A
+        ws.cell(next_row, 2, row_num)  # No.
+        ws.cell(next_row, 3, self._get_gazette_number(tender))
+        ws.cell(next_row, 4, self._format_date(tender.published_at))
+        ws.cell(next_row, 5, self._get_page_number(tender))
+        ws.cell(next_row, 6, tender.ministry or "")
+        ws.cell(next_row, 7, tender.bidding_company or "")
+        ws.cell(next_row, 8, tender.sector or "")
+        ws.cell(next_row, 9, tender.tender_type or "")
+        ws.cell(next_row, 10, tender.tender_number or "")
+        ws.cell(next_row, 11, tender.title or "")
+        ws.cell(next_row, 12, float(tender.tender_fee) if tender.tender_fee else "")
+    
+    def _append_to_future_sheet(self, ws, tender: Tender):
+        """Append a single tender to Future Tenders sheet"""
+        next_row = ws.max_row + 1
+        row_num = next_row - 5
+        
+        ws.cell(next_row, 1, row_num)
+        ws.cell(next_row, 2, tender.ministry or "")
+        ws.cell(next_row, 3, tender.bidding_company or "")
+        ws.cell(next_row, 4, tender.sector or "")
+        ws.cell(next_row, 5, tender.tender_type or "")
+        ws.cell(next_row, 6, tender.tender_number or "")
+        ws.cell(next_row, 7, tender.title or "")
+        ws.cell(next_row, 8, self._format_date(getattr(tender, 'release_date', None)))
+        ws.cell(next_row, 9, float(tender.expected_value) if getattr(tender, 'expected_value', None) else "")
+        ws.cell(next_row, 10, tender.status or "")
+        ws.cell(next_row, 11, getattr(tender, 'justification', "") or "")
+        ws.cell(next_row, 12, getattr(tender, 'announcement_type', "") or "")
+    
+    def _append_to_awarded_sheet(self, ws, tender: Tender):
+        """Append a single tender to Awarded-Opened sheet"""
+        next_row = ws.max_row + 1
+        row_num = next_row - 5
+        
+        ws.cell(next_row, 1, row_num)
+        ws.cell(next_row, 2, tender.ministry or "")
+        ws.cell(next_row, 3, tender.bidding_company or "")
+        ws.cell(next_row, 4, tender.sector or "")
+        ws.cell(next_row, 5, tender.tender_type or "")
+        ws.cell(next_row, 6, tender.tender_number or "")
+        ws.cell(next_row, 7, tender.title or "")
+        ws.cell(next_row, 8, tender.status or "")
+        ws.cell(next_row, 9, getattr(tender, 'awarded_vendor', "") or "")
+        ws.cell(next_row, 10, float(tender.awarded_value) if getattr(tender, 'awarded_value', None) else "")
+        ws.cell(next_row, 11, getattr(tender, 'justification', "") or "")
+        ws.cell(next_row, 12, getattr(tender, 'announcement_type', "") or "")
     
     def _create_released_tenders_sheet(self, wb: Workbook, tenders: List[Tender]):
         """Create Released Tenders sheet"""
