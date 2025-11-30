@@ -1865,11 +1865,32 @@ STRUCTURED TEXT:"""
             # Move to next page
             start_offset += page_size
         
-        raw_tenders = all_raw_tenders[:limit]  # Apply limit
+        # Filter by date (since API doesn't support date filtering)
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+        filtered_tenders = []
+        for tender in all_raw_tenders:
+            edition_date_str = tender.get('EditionDate', '')
+            if edition_date_str:
+                try:
+                    # Parse date like "2024-11-15" or "2024/11/15"
+                    edition_date_str = edition_date_str.replace('/', '-')
+                    edition_date = datetime.strptime(edition_date_str[:10], '%Y-%m-%d')
+                    if edition_date >= cutoff_date:
+                        filtered_tenders.append(tender)
+                except (ValueError, TypeError):
+                    # If date parsing fails, include the tender to be safe
+                    filtered_tenders.append(tender)
+            else:
+                # No date, include to be safe
+                filtered_tenders.append(tender)
         
-        if len(all_raw_tenders) > limit:
-            print(f"⚠️  WARNING: Limiting to {limit} tenders out of {len(all_raw_tenders)} fetched")
-            logger.warning(f"⚠️  Limiting to {limit} tenders out of {len(all_raw_tenders)} available")
+        print(f"📅 Date filter: Kept {len(filtered_tenders)} tenders from last {days_back} days (filtered out {len(all_raw_tenders) - len(filtered_tenders)} older)")
+        
+        raw_tenders = filtered_tenders[:limit]  # Apply limit
+        
+        if len(filtered_tenders) > limit:
+            print(f"⚠️  WARNING: Limiting to {limit} tenders out of {len(filtered_tenders)} after date filter")
+            logger.warning(f"⚠️  Limiting to {limit} tenders out of {len(filtered_tenders)} available")
         
         # Category mapping
         category_map = {
