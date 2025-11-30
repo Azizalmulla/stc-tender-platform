@@ -53,8 +53,8 @@ def run_scrape_task():
                 print(f"📊 Scraping {category_name}...")
                 category_tenders = scraper.scrape_all(
                     category_id=category_id,
-                    days_back=14,           # Last 2 weeks for weekly scrape
-                    limit=500,              # 🏢 ENTERPRISE: Get all tenders (500 is effectively unlimited for Kuwait)
+                    days_back=30,           # 🏢 ENTERPRISE: 1 month historical backfill
+                    limit=500,              # Get all tenders (500 is effectively unlimited for Kuwait)
                     extract_pdfs=True       # Enable Google Doc AI OCR
                 )
                 all_tenders.extend(category_tenders)
