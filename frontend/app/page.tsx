@@ -1,17 +1,19 @@
 "use client";
 // Updated to connect to production backend
 import { useQuery } from "@tanstack/react-query";
-import { getTenders, getTenderStats } from "@/lib/api";
-import { useState } from "react";
+import { getTenders, getTenderStats, Tender } from "@/lib/api";
+import { useState, useEffect } from "react";
 import { ModernTenderCard } from "@/components/tenders/ModernTenderCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square } from "lucide-react";
+import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square, Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/components/ui/use-toast";
+
+const PAGE_SIZE = 50;
 
 export default function HomePage() {
   const { t } = useLanguage();
@@ -26,8 +28,15 @@ export default function HomePage() {
   });
   const [selectedTenders, setSelectedTenders] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
+  
+  // Pagination state
+  const [allTenders, setAllTenders] = useState<Tender[]>([]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const { data: tenders, isLoading: tendersLoading } = useQuery({
+  // Initial data fetch
+  const { data: initialTenders, isLoading: tendersLoading } = useQuery({
     queryKey: ["tenders", filters],
     queryFn: () =>
       getTenders({
@@ -38,9 +47,60 @@ export default function HomePage() {
         value_min: filters.value_range === "under_100k" ? undefined : filters.value_range === "100k_1m" ? 100000 : filters.value_range === "over_1m" ? 1000000 : undefined,
         value_max: filters.value_range === "under_100k" ? 100000 : filters.value_range === "100k_1m" ? 1000000 : undefined,
         urgency: filters.urgency || undefined,
-        limit: 50,
+        limit: PAGE_SIZE,
+        skip: 0,
       }),
   });
+
+  // Reset pagination when filters change or initial data loads
+  useEffect(() => {
+    if (initialTenders) {
+      setAllTenders(initialTenders);
+      setCurrentPage(0);
+      setHasMore(initialTenders.length === PAGE_SIZE);
+    }
+  }, [initialTenders]);
+
+  // Load more function
+  const loadMore = async () => {
+    if (isLoadingMore || !hasMore) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = currentPage + 1;
+      const moreTenders = await getTenders({
+        ministry: filters.ministry || undefined,
+        category: filters.category || undefined,
+        sector: filters.sector || undefined,
+        status: filters.status || undefined,
+        value_min: filters.value_range === "under_100k" ? undefined : filters.value_range === "100k_1m" ? 100000 : filters.value_range === "over_1m" ? 1000000 : undefined,
+        value_max: filters.value_range === "under_100k" ? 100000 : filters.value_range === "100k_1m" ? 1000000 : undefined,
+        urgency: filters.urgency || undefined,
+        limit: PAGE_SIZE,
+        skip: nextPage * PAGE_SIZE,
+      });
+      
+      if (moreTenders.length > 0) {
+        setAllTenders(prev => [...prev, ...moreTenders]);
+        setCurrentPage(nextPage);
+        setHasMore(moreTenders.length === PAGE_SIZE);
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error("Error loading more tenders:", error);
+      toast({
+        title: t("Error", "خطأ"),
+        description: t("Failed to load more tenders", "فشل تحميل المزيد من المناقصات"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Use allTenders for display
+  const tenders = allTenders;
 
   const { data: stats } = useQuery({
     queryKey: ["stats"],
@@ -394,16 +454,52 @@ export default function HomePage() {
             ))}
           </div>
         ) : tenders && tenders.length > 0 ? (
-          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {tenders.map((tender) => (
-              <ModernTenderCard 
-                key={tender.id} 
-                tender={tender}
-                isSelected={selectedTenders.has(tender.id)}
-                onToggleSelection={toggleTenderSelection}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {tenders.map((tender) => (
+                <ModernTenderCard 
+                  key={tender.id} 
+                  tender={tender}
+                  isSelected={selectedTenders.has(tender.id)}
+                  onToggleSelection={toggleTenderSelection}
+                />
+              ))}
+            </div>
+            
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="flex justify-center mt-8">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  className="gap-2 px-8"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t("Loading...", "جاري التحميل...")}
+                    </>
+                  ) : (
+                    <>
+                      {t("Load More Tenders", "تحميل المزيد من المناقصات")}
+                      <Badge variant="secondary">{tenders.length} {t("loaded", "محمّل")}</Badge>
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+            
+            {/* All loaded message */}
+            {!hasMore && tenders.length > PAGE_SIZE && (
+              <div className="flex justify-center mt-8">
+                <p className="text-muted-foreground">
+                  ✅ {t(`All ${tenders.length} tenders loaded`, `تم تحميل جميع المناقصات (${tenders.length})`)}
+                </p>
+              </div>
+            )}
+          </>
         ) : (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
