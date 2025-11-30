@@ -36,6 +36,14 @@ def run_scrape_task():
                 detail="Kuwait Alyom credentials not configured. Set KUWAIT_ALYOM_USERNAME and KUWAIT_ALYOM_PASSWORD"
             )
         
+        # Get existing hashes from database BEFORE scraping (to skip duplicates before OCR)
+        db = SessionLocal()
+        try:
+            existing_hashes = set(h[0] for h in db.query(Tender.hash).all() if h[0])
+            print(f"📊 Found {len(existing_hashes)} existing tenders in database (will skip these before OCR)")
+        finally:
+            db.close()
+        
         # Scrape ALL categories from Kuwait Al-Yawm (Official Gazette)
         try:
             scraper = KuwaitAlyomScraper(username=username, password=password)
@@ -53,12 +61,13 @@ def run_scrape_task():
                 print(f"📊 Scraping {category_name}...")
                 category_tenders = scraper.scrape_all(
                     category_id=category_id,
-                    days_back=30,           # 🏢 ENTERPRISE: 30 days for initial backfill (change to 14 after)
-                    limit=500,              # Get all tenders (500 is effectively unlimited for Kuwait)
-                    extract_pdfs=True       # Enable Google Doc AI OCR
+                    days_back=30,           # 🏢 ENTERPRISE: 30 days lookback (duplicates skipped before OCR)
+                    limit=200,              # Higher limit to never miss tenders on busy weeks
+                    extract_pdfs=True,      # Enable Google Doc AI OCR
+                    existing_hashes=existing_hashes  # Skip duplicates BEFORE OCR
                 )
                 all_tenders.extend(category_tenders)
-                print(f"✅ Found {len(category_tenders)} from {category_name}")
+                print(f"✅ Found {len(category_tenders)} NEW from {category_name}")
             
             tenders = all_tenders
             print(f"✅ Total scraped: {len(tenders)} announcements from Kuwait Al-Yawm (Official Gazette)")

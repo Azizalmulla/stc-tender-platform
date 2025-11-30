@@ -1666,6 +1666,23 @@ STRUCTURED TEXT:"""
         print(f"     HijriDate: {hijri_date}")
         return None
     
+    def calculate_tender_hash(self, tender_data: Dict) -> str:
+        """
+        Calculate hash from raw tender data BEFORE OCR.
+        This allows us to check for duplicates before expensive OCR processing.
+        
+        Args:
+            tender_data: Raw tender data from API
+            
+        Returns:
+            MD5 hash string
+        """
+        tender_id = tender_data.get('ID', '')
+        title = tender_data.get('AdsTitle', '')
+        edition_no = tender_data.get('EditionNo', '')
+        content = f"KA-{tender_id}|{title}|{edition_no}"
+        return hashlib.md5(content.encode()).hexdigest()
+
     def parse_tender(self, tender_data: Dict, extract_pdf: bool = False, category_id: str = "1") -> Dict:
         """
         Parse tender data from Kuwait Alyom API response
@@ -1793,7 +1810,8 @@ STRUCTURED TEXT:"""
         category_id: str = "1",
         days_back: int = 90,
         limit: int = 100,
-        extract_pdfs: bool = True
+        extract_pdfs: bool = True,
+        existing_hashes: Optional[set] = None
     ) -> List[Dict]:
         """
         Scrape all tenders from Kuwait Alyom
@@ -1803,6 +1821,7 @@ STRUCTURED TEXT:"""
             days_back: How many days back to scrape
             limit: Maximum number of tenders
             extract_pdfs: Whether to extract and OCR PDFs (slower but more complete)
+            existing_hashes: Set of hashes already in database (skip these before OCR)
             
         Returns:
             List of parsed tender dictionaries
@@ -1899,16 +1918,30 @@ STRUCTURED TEXT:"""
             "18": "practices"    # الممارسات
         }
         
-        # Parse tenders
+        # Parse tenders (with duplicate check BEFORE OCR to save API costs)
         parsed_tenders = []
+        skipped_duplicates = 0
+        
         for i, raw_tender in enumerate(raw_tenders, 1):
+            # Check for duplicates BEFORE expensive OCR
+            if existing_hashes:
+                tender_hash = self.calculate_tender_hash(raw_tender)
+                if tender_hash in existing_hashes:
+                    skipped_duplicates += 1
+                    print(f"⏭️  Skipping duplicate {i}/{len(raw_tenders)}: {raw_tender.get('AdsTitle')} (already in DB)")
+                    continue
+            
             logger.info(f"📄 Processing tender {i}/{len(raw_tenders)}: {raw_tender.get('AdsTitle')}")
+            print(f"📄 Processing NEW tender {i}/{len(raw_tenders)}: {raw_tender.get('AdsTitle')}")
             parsed = self.parse_tender(raw_tender, extract_pdf=extract_pdfs, category_id=category_id)
             if parsed:
                 # Set the proper category based on category_id
                 parsed['category'] = category_map.get(category_id, "tenders")
                 parsed_tenders.append(parsed)
         
-        logger.info(f"✅ Scraped {len(parsed_tenders)} tenders from Kuwait Al-Yawm")
+        if skipped_duplicates > 0:
+            print(f"⏭️  Skipped {skipped_duplicates} duplicates (already in database, saved OCR costs!)")
+        
+        logger.info(f"✅ Scraped {len(parsed_tenders)} NEW tenders from Kuwait Al-Yawm (skipped {skipped_duplicates} duplicates)")
         
         return parsed_tenders
