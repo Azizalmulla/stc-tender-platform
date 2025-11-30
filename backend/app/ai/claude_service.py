@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any, List, Iterator
 from anthropic import Anthropic
 from app.core.config import settings
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+import time
 
 
 class ClaudeOCRService:
@@ -18,6 +19,31 @@ class ClaudeOCRService:
             raise ValueError("ANTHROPIC_API_KEY not configured")
         self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         self.model = settings.CLAUDE_MODEL
+    
+    def _call_with_retry(self, messages: list, max_tokens: int = 4096, max_retries: int = 3) -> Any:
+        """Call Claude API with automatic retry for overload errors (529)"""
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=max_tokens,
+                    messages=messages
+                )
+                return response
+            except Exception as e:
+                error_str = str(e)
+                last_error = e
+                # Check for overload error (529)
+                if "529" in error_str or "overload" in error_str.lower():
+                    wait_time = (2 ** attempt) * 5  # 5s, 10s, 20s
+                    print(f"  ⏳ Claude overloaded, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                else:
+                    # Non-retryable error, raise immediately
+                    raise
+        # All retries exhausted
+        raise last_error
     
     def extract_tender_from_image(
         self,
@@ -51,32 +77,30 @@ class ClaudeOCRService:
             # Construct prompt for Claude with enhanced date extraction
             prompt = self._construct_extraction_prompt()
             
-            # Call Claude Vision API
+            # Call Claude Vision API with retry for overload
             print(f"🧠 Claude Sonnet 4.5: Analyzing tender document...")
             
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": f"image/{image_format}",
-                                    "data": image_base64
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": f"image/{image_format}",
+                                "data": image_base64
                             }
-                        ]
-                    }
-                ]
-            )
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+            
+            response = self._call_with_retry(messages, max_tokens=4096)
             
             # Extract response text
             response_text = response.content[0].text
@@ -352,15 +376,8 @@ Generate the JSON now:""".format(
 )
         
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1500,
-                temperature=0.1,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
-            )
+            messages = [{"role": "user", "content": prompt}]
+            response = self._call_with_retry(messages, max_tokens=1500)
             
             response_text = response.content[0].text
             
@@ -431,15 +448,8 @@ Extract these fields and return JSON:
 **Return JSON now:**""".format(text_content=text[:2500].replace('{', '{{').replace('}', '}}'))
         
         try:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=500,
-                temperature=0.1,
-                messages=[{
-                    "role": "user",
-                    "content": prompt
-                }]
-            )
+            messages = [{"role": "user", "content": prompt}]
+            response = self._call_with_retry(messages, max_tokens=500)
             
             response_text = response.content[0].text
             
