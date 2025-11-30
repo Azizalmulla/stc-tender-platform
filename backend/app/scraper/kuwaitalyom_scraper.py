@@ -1805,6 +1805,70 @@ STRUCTURED TEXT:"""
             logger.error(f"❌ Error parsing tender: {e}")
             return None
     
+    def fetch_listings_only(
+        self,
+        category_id: str = "1",
+        days_back: int = 90,
+        limit: int = 100
+    ) -> List[Dict]:
+        """
+        Fetch raw tender listings WITHOUT OCR (fast, low memory).
+        Use this for incremental processing to save memory.
+        
+        Args:
+            category_id: Category to scrape (1=Tenders, 2=Auctions, 18=Practices)
+            days_back: How many days back to scrape
+            limit: Maximum number of tenders
+            
+        Returns:
+            List of raw tender dictionaries (no OCR yet)
+        """
+        print(f"📋 Fetching listings only for category {category_id} (no OCR)...")
+        
+        # Fetch all pages
+        all_raw_tenders = []
+        page_size = 100
+        start_offset = 0
+        
+        while True:
+            page_tenders, total = self.fetch_tenders(
+                category_id=category_id,
+                start_date="",
+                end_date="",
+                limit=page_size,
+                start_offset=start_offset
+            )
+            
+            if not page_tenders:
+                break
+                
+            all_raw_tenders.extend(page_tenders)
+            
+            if len(all_raw_tenders) >= limit or len(page_tenders) < page_size:
+                break
+                
+            start_offset += page_size
+        
+        # Filter by date
+        cutoff_date = datetime.now() - timedelta(days=days_back)
+        filtered = []
+        for tender in all_raw_tenders:
+            edition_date_str = tender.get('EditionDate', '')
+            if edition_date_str:
+                try:
+                    edition_date_str = edition_date_str.replace('/', '-')
+                    edition_date = datetime.strptime(edition_date_str[:10], '%Y-%m-%d')
+                    if edition_date >= cutoff_date:
+                        filtered.append(tender)
+                except:
+                    filtered.append(tender)
+            else:
+                filtered.append(tender)
+        
+        result = filtered[:limit]
+        print(f"📋 Found {len(result)} listings from last {days_back} days")
+        return result
+
     def scrape_all(
         self,
         category_id: str = "1",
@@ -1814,7 +1878,8 @@ STRUCTURED TEXT:"""
         existing_hashes: Optional[set] = None
     ) -> List[Dict]:
         """
-        Scrape all tenders from Kuwait Alyom
+        Scrape all tenders from Kuwait Alyom (batch mode - uses more memory).
+        Consider using fetch_listings_only() + parse_tender() for incremental mode.
         
         Args:
             category_id: Category to scrape (1=Tenders, 2=Auctions, 18=Practices)
