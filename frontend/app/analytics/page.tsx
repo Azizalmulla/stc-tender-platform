@@ -39,11 +39,14 @@ import {
   RefreshCw
 } from "lucide-react";
 import Link from "next/link";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // Apple-style colors
 const COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#5856D6', '#AF52DE'];
 
 export default function AnalyticsPage() {
+  const { t } = useLanguage();
+  
   const { data: summary, isLoading: loadingSummary, refetch: refetchSummary } = useQuery({
     queryKey: ['analytics-summary'],
     queryFn: getAnalyticsSummary,
@@ -79,18 +82,18 @@ export default function AnalyticsPage() {
 
   // Prepare urgency chart data - Apple colors
   const urgencyData = urgency ? [
-    { name: 'عاجل (3 أيام)', value: urgency.urgent_3_days, color: '#FF3B30' },
-    { name: 'هذا الأسبوع', value: urgency.this_week, color: '#FF9500' },
-    { name: 'هذا الشهر', value: urgency.this_month, color: '#34C759' },
-    { name: 'لاحقاً', value: urgency.later, color: '#007AFF' },
-    { name: 'منتهي', value: urgency.expired, color: '#8E8E93' },
+    { name: t('Urgent (3 days)', 'عاجل (3 أيام)'), value: urgency.urgent_3_days, color: '#FF3B30' },
+    { name: t('This Week', 'هذا الأسبوع'), value: urgency.this_week, color: '#FF9500' },
+    { name: t('This Month', 'هذا الشهر'), value: urgency.this_month, color: '#34C759' },
+    { name: t('Later', 'لاحقاً'), value: urgency.later, color: '#007AFF' },
+    { name: t('Expired', 'منتهي'), value: urgency.expired, color: '#8E8E93' },
   ] : [];
 
   // Prepare category chart data
   const categoryData = categories?.map(cat => ({
-    name: cat.category === 'tenders' ? 'مناقصات' : 
-          cat.category === 'auctions' ? 'مزايدات' : 
-          cat.category === 'practices' ? 'ممارسات' : cat.category,
+    name: cat.category === 'tenders' ? t('Tenders', 'مناقصات') : 
+          cat.category === 'auctions' ? t('Auctions', 'مزايدات') : 
+          cat.category === 'practices' ? t('Practices', 'ممارسات') : cat.category,
     active: cat.active,
     expired: cat.expired,
     total: cat.total
@@ -111,10 +114,10 @@ export default function AnalyticsPage() {
             </Link>
             <div>
               <h1 className="text-2xl font-semibold text-[#1C1C1E] dark:text-white">
-                لوحة التحليلات
+                {t('Analytics Dashboard', 'لوحة التحليلات')}
               </h1>
               <p className="text-sm text-[#8E8E93]">
-                إحصائيات وتحليلات المناقصات
+                {t('Tender statistics and analytics', 'إحصائيات وتحليلات المناقصات')}
               </p>
             </div>
           </div>
@@ -123,7 +126,7 @@ export default function AnalyticsPage() {
             className="flex items-center gap-2 px-4 py-2 bg-[#007AFF] text-white rounded-xl hover:bg-[#0056B3] transition-colors font-medium"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            تحديث
+            {t('Refresh', 'تحديث')}
           </button>
         </div>
       </header>
@@ -133,28 +136,28 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <StatCard
             icon={<FileText className="w-6 h-6" />}
-            label="إجمالي المناقصات"
+            label={t('Total Tenders', 'إجمالي المناقصات')}
             value={summary?.total_tenders || 0}
             color="violet"
             loading={loadingSummary}
           />
           <StatCard
             icon={<CheckCircle className="w-6 h-6" />}
-            label="مناقصات نشطة"
+            label={t('Active Tenders', 'مناقصات نشطة')}
             value={summary?.active_tenders || 0}
             color="emerald"
             loading={loadingSummary}
           />
           <StatCard
             icon={<TrendingUp className="w-6 h-6" />}
-            label="جديد هذا الأسبوع"
+            label={t('New This Week', 'جديد هذا الأسبوع')}
             value={summary?.new_this_week || 0}
             color="cyan"
             loading={loadingSummary}
           />
           <StatCard
             icon={<AlertTriangle className="w-6 h-6" />}
-            label="مواعيد هذا الأسبوع"
+            label={t('Deadlines This Week', 'مواعيد هذا الأسبوع')}
             value={summary?.deadlines_this_week || 0}
             color="amber"
             loading={loadingSummary}
@@ -167,7 +170,7 @@ export default function AnalyticsPage() {
           <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[#1C1C1E] dark:text-white">
               <TrendingUp className="w-5 h-5 text-[#007AFF]" />
-              اتجاه المناقصات (30 يوم)
+              {t('Tender Trends (30 days)', 'اتجاه المناقصات (30 يوم)')}
             </h2>
             {loadingTrends ? (
               <div className="h-64 flex items-center justify-center">
@@ -210,7 +213,7 @@ export default function AnalyticsPage() {
           <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[#1C1C1E] dark:text-white">
               <Clock className="w-5 h-5 text-[#FF9500]" />
-              توزيع الاستعجال
+              {t('Urgency Distribution', 'توزيع الاستعجال')}
             </h2>
             {loadingUrgency ? (
               <div className="h-64 flex items-center justify-center">
@@ -252,7 +255,7 @@ export default function AnalyticsPage() {
           <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[#1C1C1E] dark:text-white">
               <Building2 className="w-5 h-5 text-[#5856D6]" />
-              أكثر الجهات نشاطاً
+              {t('Top Entities', 'أكثر الجهات نشاطاً')}
             </h2>
             {loadingMinistries ? (
               <div className="h-64 flex items-center justify-center">
@@ -274,7 +277,7 @@ export default function AnalyticsPage() {
                     tick={{ fontSize: 11, fill: '#8E8E93' }}
                     tickFormatter={(val) => val.length > 25 ? val.substring(0, 25) + '...' : val}
                   />
-                  <Tooltip formatter={(val: number) => [val, 'مناقصات']} />
+                  <Tooltip formatter={(val: number) => [val, t('tenders', 'مناقصات')]} />
                   <Bar dataKey="count" fill="#5856D6" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -285,7 +288,7 @@ export default function AnalyticsPage() {
           <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[#1C1C1E] dark:text-white">
               <FileText className="w-5 h-5 text-[#34C759]" />
-              توزيع الفئات
+              {t('Category Breakdown', 'توزيع الفئات')}
             </h2>
             {loadingCategories ? (
               <div className="h-64 flex items-center justify-center">
@@ -299,8 +302,8 @@ export default function AnalyticsPage() {
                   <YAxis tick={{ fontSize: 12, fill: '#8E8E93' }} />
                   <Tooltip />
                   <Legend />
-                  <Bar dataKey="active" name="نشط" fill="#34C759" stackId="a" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expired" name="منتهي" fill="#8E8E93" stackId="a" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="active" name={t('Active', 'نشط')} fill="#34C759" stackId="a" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expired" name={t('Expired', 'منتهي')} fill="#8E8E93" stackId="a" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -311,7 +314,7 @@ export default function AnalyticsPage() {
         <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-6 shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-[#1C1C1E] dark:text-white">
             <Calendar className="w-5 h-5 text-[#FF3B30]" />
-            المواعيد القادمة (14 يوم)
+            {t('Upcoming Deadlines (14 days)', 'المواعيد القادمة (14 يوم)')}
           </h2>
           {loadingDeadlines ? (
             <div className="h-48 flex items-center justify-center">
@@ -328,15 +331,15 @@ export default function AnalyticsPage() {
                 />
                 <YAxis tick={{ fontSize: 12, fill: '#8E8E93' }} />
                 <Tooltip 
-                  labelFormatter={(val) => new Date(val).toLocaleDateString('ar-KW', { weekday: 'long', day: 'numeric', month: 'long' })}
-                  formatter={(val: number) => [val, 'مناقصات']}
+                  labelFormatter={(val) => new Date(val).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  formatter={(val: number) => [val, t('tenders', 'مناقصات')]}
                 />
                 <Bar dataKey="count" fill="#FF3B30" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
             <div className="h-48 flex items-center justify-center text-[#8E8E93]">
-              لا توجد مواعيد نهائية في الأسبوعين القادمين
+              {t('No deadlines in the next two weeks', 'لا توجد مواعيد نهائية في الأسبوعين القادمين')}
             </div>
           )}
         </div>
