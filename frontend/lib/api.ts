@@ -213,3 +213,75 @@ export const getNotifications = async (params?: {
   const { data} = await api.get("/api/notifications", { params });
   return data;
 };
+
+// Analytics API
+export interface AnalyticsSummary {
+  total_tenders: number;
+  active_tenders: number;
+  expired_tenders: number;
+  new_this_week: number;
+  deadlines_this_week: number;
+  by_category: Record<string, number>;
+}
+
+export interface TrendData {
+  daily: Array<{ date: string; count: number }>;
+  weekly: Array<{ week: string; count: number }>;
+  period_days: number;
+}
+
+export interface MinistryData {
+  ministry: string;
+  count: number;
+  rank: number;
+}
+
+export interface DeadlineData {
+  date: string;
+  count: number;
+}
+
+export interface UrgencyData {
+  urgent_3_days: number;
+  this_week: number;
+  this_month: number;
+  later: number;
+  expired: number;
+}
+
+export interface CategoryStats {
+  category: string;
+  total: number;
+  active: number;
+  expired: number;
+}
+
+export const getAnalyticsSummary = async (): Promise<AnalyticsSummary> => {
+  const { data } = await api.get("/api/analytics/summary");
+  return data;
+};
+
+export const getAnalyticsTrends = async (days?: number): Promise<TrendData> => {
+  const { data } = await api.get("/api/analytics/trends", { params: { days } });
+  return data;
+};
+
+export const getTopMinistries = async (limit?: number): Promise<MinistryData[]> => {
+  const { data } = await api.get("/api/analytics/ministries", { params: { limit } });
+  return data;
+};
+
+export const getUpcomingDeadlines = async (days?: number): Promise<DeadlineData[]> => {
+  const { data } = await api.get("/api/analytics/deadlines", { params: { days } });
+  return data;
+};
+
+export const getUrgencyDistribution = async (): Promise<UrgencyData> => {
+  const { data } = await api.get("/api/analytics/urgency");
+  return data;
+};
+
+export const getCategoryStats = async (): Promise<CategoryStats[]> => {
+  const { data } = await api.get("/api/analytics/categories");
+  return data;
+};

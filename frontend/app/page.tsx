@@ -9,7 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square, Loader2 } from "lucide-react";
+import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square, Loader2, BarChart3 } from "lucide-react";
+import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -183,16 +184,24 @@ export default function HomePage() {
   return (
     <div className="container py-4 sm:py-6 md:py-8 space-y-4 sm:space-y-6 md:space-y-8 px-4">
       {/* Hero Section */}
-      <div className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
-          {t("Government Tenders", "المناقصات الحكومية")}
-        </h1>
-        <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
-          {t(
-            "Track and analyze government tenders in Kuwait with AI",
-            "تتبع وتحليل المناقصات الحكومية في الكويت بالذكاء الاصطناعي"
-          )}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight">
+            {t("Government Tenders", "المناقصات الحكومية")}
+          </h1>
+          <p className="text-sm sm:text-base md:text-lg text-muted-foreground">
+            {t(
+              "Track and analyze government tenders in Kuwait with AI",
+              "تتبع وتحليل المناقصات الحكومية في الكويت بالذكاء الاصطناعي"
+            )}
+          </p>
+        </div>
+        <Link href="/analytics">
+          <Button variant="outline" className="gap-2">
+            <BarChart3 className="w-4 h-4" />
+            {t("Analytics", "التحليلات")}
+          </Button>
+        </Link>
       </div>
 
       {/* Stats Grid */}

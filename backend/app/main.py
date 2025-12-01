@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.config import settings
-from app.api import tenders, search, chat, cron, notifications, meetings, export
+from app.api import tenders, search, chat, cron, notifications, meetings, export, analytics
 
 
 class ProxyHeadersMiddleware(BaseHTTPMiddleware):
@@ -45,6 +45,7 @@ app.include_router(cron.router, prefix="/api", tags=["cron"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(meetings.router, prefix="/api/meetings", tags=["meetings"])
 app.include_router(export.router, prefix="/api", tags=["export"])
+app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 
 
 @app.get("/")
