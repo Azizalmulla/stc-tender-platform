@@ -4,10 +4,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Building2, FileText, ExternalLink, Clock, AlertTriangle, Users, CheckSquare, Square } from "lucide-react";
+import { Calendar, Building2, FileText, ExternalLink, Clock, AlertTriangle, Users, CheckSquare, Square, Heart } from "lucide-react";
 import Link from "next/link";
 import { Tender } from "@/lib/api";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useSavedTenders } from "@/hooks/useSavedTenders";
 
 interface TenderCardProps {
   tender: Tender;
@@ -17,6 +18,9 @@ interface TenderCardProps {
 
 export function ModernTenderCard({ tender, isSelected = false, onToggleSelection }: TenderCardProps) {
   const { t, language } = useLanguage();
+  const { isSaved, toggleSave } = useSavedTenders();
+  const saved = isSaved(tender.id);
+  
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'غير محدد';
     const date = new Date(dateString);
@@ -172,6 +176,17 @@ export function ModernTenderCard({ tender, isSelected = false, onToggleSelection
           <Link href={`/tender/${tender.id}`}>
             {t('View Details', 'عرض التفاصيل')}
           </Link>
+        </Button>
+        <Button 
+          variant="outline" 
+          size="icon"
+          onClick={(e) => {
+            e.preventDefault();
+            toggleSave(tender.id);
+          }}
+          className={saved ? 'text-red-500 hover:text-red-600' : 'text-muted-foreground hover:text-red-500'}
+        >
+          <Heart className={`h-4 w-4 ${saved ? 'fill-current' : ''}`} />
         </Button>
         <Button asChild variant="outline" size="icon">
           <a href={tender.url} target="_blank" rel="noopener noreferrer">

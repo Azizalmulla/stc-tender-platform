@@ -9,16 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square, Loader2, BarChart3 } from "lucide-react";
+import { TrendingUp, FileText, Calendar, AlertCircle, Download, CheckSquare, Square, Loader2, BarChart3, Heart } from "lucide-react";
 import Link from "next/link";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useToast } from "@/components/ui/use-toast";
+import { useSavedTenders } from "@/hooks/useSavedTenders";
 
 const PAGE_SIZE = 50;
 
 export default function HomePage() {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const { savedTenderIds, savedCount } = useSavedTenders();
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
   const [filters, setFilters] = useState({
     ministry: "",
     category: "",
@@ -401,9 +404,25 @@ export default function HomePage() {
       {/* Tenders Grid */}
       <div>
         <div className="flex items-center justify-between mb-3 sm:mb-4">
-          <h2 className="text-xl sm:text-2xl font-bold">
-            {t("Latest Tenders", "أحدث المناقصات")}
-          </h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl sm:text-2xl font-bold">
+              {t("Latest Tenders", "أحدث المناقصات")}
+            </h2>
+            <Button
+              variant={showSavedOnly ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowSavedOnly(!showSavedOnly)}
+              className="gap-2"
+            >
+              <Heart className={`h-4 w-4 ${showSavedOnly ? 'fill-current' : ''}`} />
+              {t("Saved", "المحفوظة")}
+              {savedCount > 0 && (
+                <Badge variant={showSavedOnly ? "secondary" : "outline"} className="ml-1">
+                  {savedCount}
+                </Badge>
+              )}
+            </Button>
+          </div>
           
           {/* Export Toolbar */}
           {tenders && tenders.length > 0 && (
@@ -465,7 +484,10 @@ export default function HomePage() {
         ) : tenders && tenders.length > 0 ? (
           <>
             <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {tenders.map((tender) => (
+              {(showSavedOnly 
+                ? tenders.filter(t => savedTenderIds.includes(t.id))
+                : tenders
+              ).map((tender) => (
                 <ModernTenderCard 
                   key={tender.id} 
                   tender={tender}
@@ -474,6 +496,13 @@ export default function HomePage() {
                 />
               ))}
             </div>
+            {showSavedOnly && tenders.filter(t => savedTenderIds.includes(t.id)).length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                <Heart className="h-12 w-12 mx-auto mb-4 opacity-20" />
+                <p>{t("No saved tenders yet", "لا توجد مناقصات محفوظة بعد")}</p>
+                <p className="text-sm mt-1">{t("Click the heart icon on any tender to save it", "انقر على أيقونة القلب لحفظ أي مناقصة")}</p>
+              </div>
+            )}
             
             {/* Load More Button */}
             {hasMore && (
