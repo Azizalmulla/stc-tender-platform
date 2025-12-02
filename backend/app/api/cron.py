@@ -209,6 +209,15 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
             db.close()
             return None
         
+        # Check if tender is relevant to STC (technology/telecom)
+        is_stc_relevant = extracted.get('is_stc_relevant', True)  # Default to True if missing
+        if not is_stc_relevant:
+            print(f"    ⏭️  Skipping non-tech tender (not relevant to STC)")
+            db.close()
+            return None
+        
+        print(f"    ✅ Tech-relevant tender detected")
+        
         summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
         
         # Voyage embedding
