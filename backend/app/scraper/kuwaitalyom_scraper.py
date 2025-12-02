@@ -1849,21 +1849,34 @@ STRUCTURED TEXT:"""
                 
             start_offset += page_size
         
-        # Filter by date
+        # Filter by date - but include tenders with missing dates (API returns newest first)
         cutoff_date = datetime.now() - timedelta(days=days_back)
         filtered = []
+        included_without_date = 0
+        
         for tender in all_raw_tenders:
-            edition_date_str = tender.get('EditionDate', '')
+            edition_date_str = tender.get('EditionDate') or tender.get('PublishDate') or tender.get('AdsDate') or ''
+            
             if edition_date_str:
                 try:
                     edition_date_str = edition_date_str.replace('/', '-')
                     edition_date = datetime.strptime(edition_date_str[:10], '%Y-%m-%d')
                     if edition_date >= cutoff_date:
                         filtered.append(tender)
-                except:
+                except Exception as e:
+                    # Can't parse date - include anyway (API returns newest first)
+                    tender['date_uncertain'] = True
                     filtered.append(tender)
+                    included_without_date += 1
             else:
+                # No date field - include anyway (API returns newest first)
+                tender['date_uncertain'] = True
                 filtered.append(tender)
+                included_without_date += 1
+        
+        if included_without_date > 0:
+            print(f"⚠️ Included {included_without_date} tenders with uncertain dates")
+        print(f"📊 Date filter: {len(filtered)} passed (cutoff: {cutoff_date.strftime('%Y-%m-%d')})")
         
         result = filtered[:limit]
         print(f"📋 Found {len(result)} listings from last {days_back} days")

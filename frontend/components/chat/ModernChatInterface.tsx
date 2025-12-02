@@ -108,19 +108,39 @@ export function ModernChatInterface() {
     setIsLoading(true);
 
     try {
-      // Call chat API with session ID (backend handles history)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/ask`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          question: questionText,
-          session_id: sessionId,  // Send current session ID (or null for new)
-          lang: language,
-          limit: 5,
-        }),
-      });
+      // Call chat API with retry for transient failures
+      const fetchWithRetry = async (retries = 2): Promise<Response> => {
+        try {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/ask`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              question: questionText,
+              session_id: sessionId,
+              lang: language,
+              limit: 5,
+            }),
+          });
+          
+          if (!response.ok && retries > 0) {
+            console.log(`Retrying... (${retries} attempts left)`);
+            await new Promise(r => setTimeout(r, 1000));
+            return fetchWithRetry(retries - 1);
+          }
+          return response;
+        } catch (e) {
+          if (retries > 0) {
+            console.log(`Network error, retrying... (${retries} attempts left)`);
+            await new Promise(r => setTimeout(r, 1000));
+            return fetchWithRetry(retries - 1);
+          }
+          throw e;
+        }
+      };
+
+      const response = await fetchWithRetry();
 
       if (!response.ok) {
         throw new Error('Failed to get response');
@@ -144,14 +164,25 @@ export function ModernChatInterface() {
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Chat API Error:", error);
+      
+      // Determine error type for better user feedback
+      let errorText = t(
+        "Sorry, I encountered an error. Please try again.",
+        "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى."
+      );
+      
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorText = t(
+          "Connection error. The server may be waking up - please try again in a few seconds.",
+          "خطأ في الاتصال. قد يكون الخادم في حالة استيقاظ - يرجى المحاولة مرة أخرى بعد ثوانٍ."
+        );
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: t(
-          "Sorry, I encountered an error. Please try again.",
-          "عذراً، حدث خطأ. يرجى المحاولة مرة أخرى."
-        ),
+        content: errorText,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
