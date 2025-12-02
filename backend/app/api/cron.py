@@ -18,16 +18,20 @@ from app.utils.date_validator import date_validator  # Extreme date accuracy
 router = APIRouter(prefix="/cron", tags=["cron"])
 
 
-def run_scrape_task():
+def run_scrape_task(days_back: int = 30):
     """
     Background task to run the scrape without blocking HTTP requests.
     Uses INCREMENTAL processing to stay within 512MB memory limit.
     Each tender is processed and saved immediately, then cleared from memory.
+    
+    Args:
+        days_back: Number of days to scrape back (default 30)
     """
     import gc  # For memory management
     
     try:
-        print(f"🤖 Starting weekly scrape from Kuwait Al-Yawm (Official Gazette) at {datetime.now()}")
+        print(f"🤖 Starting scrape from Kuwait Al-Yawm (Official Gazette) at {datetime.now()}")
+        print(f"📅 Scraping last {days_back} days")
         print(f"📦 Using INCREMENTAL mode: Process → Save → Clear memory (512MB safe)")
         
         # Initialize Kuwait Alyom scraper with credentials
@@ -63,7 +67,7 @@ def run_scrape_task():
             # Step 1: Fetch listings only (fast, low memory - no OCR yet)
             raw_listings = scraper.fetch_listings_only(
                 category_id=category_id,
-                days_back=30,
+                days_back=days_back,
                 limit=200
             )
             
@@ -302,6 +306,58 @@ async def scrape_weekly(
         "status": "scrape_started",
         "message": "Scraping task started in background. Check logs for progress.",
         "timestamp": datetime.now().isoformat()
+    }
+
+
+@router.post("/fresh-scrape")
+async def fresh_scrape(
+    background_tasks: BackgroundTasks,
+    days_back: int = 14,
+    clear_first: bool = True,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Fresh scrape - clears database and scrapes specified days back.
+    Perfect for a clean start with only active tenders.
+    
+    Args:
+        days_back: Number of days to scrape (default 14)
+        clear_first: Whether to clear database first (default True)
+    """
+    # Simple auth check
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    result = {"days_back": days_back, "clear_first": clear_first}
+    
+    # Clear database if requested
+    if clear_first:
+        try:
+            db = SessionLocal()
+            embedding_count = db.query(TenderEmbedding).count()
+            db.query(TenderEmbedding).delete()
+            tender_count = db.query(Tender).count()
+            db.query(Tender).delete()
+            db.commit()
+            db.close()
+            
+            result["cleared"] = {
+                "tenders": tender_count,
+                "embeddings": embedding_count
+            }
+            print(f"🗑️ Cleared {tender_count} tenders and {embedding_count} embeddings")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
+    
+    # Queue the scrape task with specified days_back
+    background_tasks.add_task(run_scrape_task, days_back)
+    
+    return {
+        "status": "fresh_scrape_started",
+        "message": f"Scraping last {days_back} days. Check logs for progress.",
+        "timestamp": datetime.now().isoformat(),
+        **result
     }
 
 
