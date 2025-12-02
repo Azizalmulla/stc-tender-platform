@@ -434,7 +434,8 @@ Extract these fields and return JSON:
   "expected_value": numeric value in KD (estimated tender/contract value),
   "category": "IT|Construction|Services|Healthcare|Infrastructure|Other",
   "status": "Open|Awarded|Cancelled|null",
-  "stc_sector": "telecom|datacenter|callcenter|network|smartcity|null"
+  "stc_sector": "telecom|datacenter|callcenter|network|smartcity|null",
+  "is_stc_relevant": true or false
 }}
 ```
 
@@ -461,6 +462,11 @@ Extract these fields and return JSON:
   * "network" = networking equipment, security, firewalls, routers, switches, VPN, cybersecurity, شبكات, أمن سيبراني, جدار ناري
   * "smartcity" = smart city, IoT, sensors, automation, smart systems, المدينة الذكية, إنترنت الأشياء, أتمتة
   * null if not related to any STC sector
+- For is_stc_relevant: Determine if this tender is relevant to a telecommunications/technology company like STC
+  * true if tender involves ANY of: IT systems, software, hardware, networking, telecommunications, security systems (CCTV, access control), data centers, cloud services, IoT, smart city, servers, computers, cybersecurity, call centers, phone systems, internet, fiber optics, 5G/4G, GPS, tracking systems, automation, digital transformation, etc.
+  * true if tender involves technology SERVICES like: IT maintenance, system integration, tech consulting, software development, network installation, etc.
+  * false if tender is clearly unrelated: construction/building work, furniture, vehicles (non-tech), food, cleaning, medical supplies, printing, stationery, uniforms, etc.
+  * When in doubt, lean towards true - STC prefers not to miss potential opportunities
 
 **Return JSON now:**""".format(text_content=text[:2500].replace('{', '{{').replace('}', '}}'))
         
@@ -705,7 +711,11 @@ Return ONLY the JSON, no explanation."""
         prompt = f"""You are an expert assistant for Kuwait government tenders from Kuwait Al-Yawm Official Gazette.
 أنت مساعد خبير في مناقصات الحكومة الكويتية من جريدة كويت اليوم الرسمية.
 
-Today's date is {today_readable} ({today}). Use this to determine if tenders are active or expired.
+**CRITICAL: Today's date is {today_readable} ({today}).**
+- Compare ALL deadline dates against TODAY'S DATE
+- If deadline < today → EXPIRED ❌ (clearly mark as expired)
+- If deadline >= today → ACTIVE ✓ (still open for submission)
+- NEVER say a tender is "still open" if its deadline has passed
 
 **INSTRUCTIONS:**
 - Answer ONLY using the provided documents - never fabricate information

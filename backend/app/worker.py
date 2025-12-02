@@ -96,6 +96,14 @@ def process_single_tender(tender_data: dict):
         full_text = f"{tender_data.get('title', '')} {tender_data.get('body', '')}"
         structured_data = ai_service.extract_structured_data(full_text)
         
+        # Check if tender is relevant to STC (technology/telecom)
+        is_stc_relevant = structured_data.get("is_stc_relevant", True)  # Default to True if missing
+        if not is_stc_relevant:
+            print(f"    ⏭️  Skipping non-tech tender: {tender_data.get('title', '')[:50]}")
+            return None  # Skip non-relevant tenders
+        
+        print(f"    ✅ Tech-relevant tender detected")
+        
         # Update tender data with extracted fields
         tender_data.update({
             "ministry": structured_data.get("ministry") or tender_data.get("ministry"),
