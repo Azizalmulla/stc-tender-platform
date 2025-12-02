@@ -415,7 +415,7 @@ Generate the JSON now:""".format(
             text: Full tender text
             
         Returns:
-            Dict with ministry, tender_number, deadline, document_price_kd, category
+            Dict with ministry, tender_number, deadline, document_price_kd, expected_value, category
         """
         prompt = """Extract structured fields from this Kuwait tender text.
 
@@ -430,8 +430,11 @@ Extract these fields and return JSON:
   "ministry": "Exact issuing organization name from document",
   "tender_number": "Exact tender/RFP/RFQ number",
   "deadline": "YYYY-MM-DD format",
-  "document_price_kd": numeric value in KD,
-  "category": "IT|Construction|Services|Healthcare|Infrastructure|Other"
+  "document_price_kd": numeric value in KD (fee to buy tender documents),
+  "expected_value": numeric value in KD (estimated tender/contract value),
+  "category": "IT|Construction|Services|Healthcare|Infrastructure|Other",
+  "status": "Open|Awarded|Cancelled|null",
+  "stc_sector": "telecom|datacenter|callcenter|network|smartcity|null"
 }}
 ```
 
@@ -443,7 +446,21 @@ Extract these fields and return JSON:
   * Only use null if absolutely NO organization name is mentioned
 - For deadline: Parse from Arabic or English dates
 - For category: Classify based on keywords in text
-- For document_price_kd: Extract numeric value only
+- For document_price_kd: Small fee to purchase tender documents (usually 5-50 KD)
+- For expected_value: Estimated contract/project value if mentioned (can be thousands to millions KD)
+  * Look for phrases like "قيمة العقد", "القيمة التقديرية", "estimated value", "contract value"
+- For status: Detect if tender is awarded or cancelled
+  * "Awarded" if text mentions: "ترسية", "تم الترسية", "awarded", "winner", "الفائز"
+  * "Cancelled" if text mentions: "إلغاء", "ملغى", "cancelled", "canceled"
+  * "Open" if it's a new tender announcement with future deadline
+  * null if status is unclear
+- For stc_sector: Classify if relevant to STC (telecommunications company) business areas:
+  * "telecom" = telecommunications, mobile networks, fiber optic, 5G/4G, phone systems, اتصالات, تليكوم, ألياف ضوئية, شبكة الهاتف
+  * "datacenter" = data centers, cloud computing, servers, hosting, storage, مركز بيانات, خوادم, حوسبة سحابية, استضافة
+  * "callcenter" = call centers, contact centers, customer service systems, IVR, مركز اتصال, خدمة العملاء, الرد الآلي
+  * "network" = networking equipment, security, firewalls, routers, switches, VPN, cybersecurity, شبكات, أمن سيبراني, جدار ناري
+  * "smartcity" = smart city, IoT, sensors, automation, smart systems, المدينة الذكية, إنترنت الأشياء, أتمتة
+  * null if not related to any STC sector
 
 **Return JSON now:**""".format(text_content=text[:2500].replace('{', '{{').replace('}', '}}'))
         

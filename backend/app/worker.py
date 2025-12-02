@@ -102,6 +102,9 @@ def process_single_tender(tender_data: dict):
             "tender_number": structured_data.get("tender_number") or tender_data.get("tender_number"),
             "deadline": structured_data.get("deadline") or tender_data.get("deadline"),
             "document_price_kd": structured_data.get("document_price_kd") or tender_data.get("document_price_kd"),
+            "expected_value": structured_data.get("expected_value"),  # Tender/contract value
+            "status": structured_data.get("status") or "Released",  # Open, Awarded, Cancelled
+            "sector": structured_data.get("stc_sector"),  # AI-detected STC sector
             "category": structured_data.get("category") or tender_data.get("category", "Other"),
         })
         

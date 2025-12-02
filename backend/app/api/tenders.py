@@ -65,9 +65,8 @@ async def get_tenders(
     lang: Optional[str] = None,
     from_date: Optional[datetime] = None,
     to_date: Optional[datetime] = None,
-    # NEW STC Filters
-    sector: Optional[str] = None,
-    status: Optional[str] = None,
+    sector: Optional[str] = None,  # Filters by ai_sectors array
+    deadline_status: Optional[str] = None,  # "active" or "expired"
     value_min: Optional[float] = None,
     value_max: Optional[float] = None,
     urgency: Optional[str] = None,  # "7_days" or "14_days"
@@ -83,10 +82,8 @@ async def get_tenders(
     - **lang**: Filter by language ('ar', 'en')
     - **from_date**: Filter by published date (from)
     - **to_date**: Filter by published date (to)
-    - **sector**: Filter by STC sector (Telecom infrastructure, Data center & cloud, etc.)
-    - **status**: Filter by status (Open, Closed, Awarded, Cancelled)
-    - **value_min**: Minimum tender value in KD
-    - **value_max**: Maximum tender value in KD
+    - **sector**: Filter by AI-detected sector (searches ai_sectors array)
+    - **deadline_status**: Filter by deadline (active = future deadline, expired = past deadline)
     - **urgency**: Filter by urgency (7_days = deadline within 7 days, 14_days = within 14 days)
     """
     query = db.query(Tender)
@@ -109,18 +106,42 @@ async def get_tenders(
     if to_date:
         filters.append(Tender.published_at <= to_date)
     
-    # NEW STC Filters
+    # Sector filter - uses AI-detected STC sector
     if sector:
         filters.append(Tender.sector == sector)
     
-    if status:
-        filters.append(Tender.status == status)
-    
+    # Value range filter
     if value_min is not None:
         filters.append(Tender.expected_value >= value_min)
     
     if value_max is not None:
         filters.append(Tender.expected_value <= value_max)
+    
+    # Status filter - maps to deadline or AI-detected status field
+    if deadline_status:
+        now = datetime.now(timezone.utc)
+        if deadline_status == "open":
+            # Open = deadline in future OR status is Open/Released
+            filters.append(or_(
+                and_(
+                    Tender.deadline.isnot(None),
+                    Tender.deadline >= now
+                ),
+                Tender.status.in_(["Open", "Released"])
+            ))
+        elif deadline_status == "closed":
+            # Closed = deadline passed (but not awarded/cancelled)
+            filters.append(and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline < now,
+                ~Tender.status.in_(["Awarded", "Cancelled"])
+            ))
+        elif deadline_status == "awarded":
+            # Awarded = AI detected or manually set
+            filters.append(Tender.status == "Awarded")
+        elif deadline_status == "cancelled":
+            # Cancelled = AI detected or manually set
+            filters.append(Tender.status == "Cancelled")
     
     if urgency:
         now = datetime.now(timezone.utc)

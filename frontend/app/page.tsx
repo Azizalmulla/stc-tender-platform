@@ -26,7 +26,7 @@ export default function HomePage() {
     ministry: "",
     category: "",
     sector: "",
-    status: "",
+    status: "",  // "active" or "expired"
     value_range: "",
     urgency: "",
   });
@@ -47,7 +47,7 @@ export default function HomePage() {
         ministry: filters.ministry || undefined,
         category: filters.category || undefined,
         sector: filters.sector || undefined,
-        status: filters.status || undefined,
+        deadline_status: filters.status || undefined,
         value_min: filters.value_range === "under_100k" ? undefined : filters.value_range === "100k_1m" ? 100000 : filters.value_range === "over_1m" ? 1000000 : undefined,
         value_max: filters.value_range === "under_100k" ? 100000 : filters.value_range === "100k_1m" ? 1000000 : undefined,
         urgency: filters.urgency || undefined,
@@ -76,7 +76,7 @@ export default function HomePage() {
         ministry: filters.ministry || undefined,
         category: filters.category || undefined,
         sector: filters.sector || undefined,
-        status: filters.status || undefined,
+        deadline_status: filters.status || undefined,
         value_min: filters.value_range === "under_100k" ? undefined : filters.value_range === "100k_1m" ? 100000 : filters.value_range === "over_1m" ? 1000000 : undefined,
         value_max: filters.value_range === "under_100k" ? 100000 : filters.value_range === "100k_1m" ? 1000000 : undefined,
         urgency: filters.urgency || undefined,
@@ -295,7 +295,7 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Sector Filter */}
+            {/* Sector Filter - STC specific sectors */}
             <div>
               <label className="text-sm font-medium mb-2 block">
                 {t("Sector", "القطاع")}
@@ -306,11 +306,11 @@ export default function HomePage() {
                 onChange={(e) => setFilters({ ...filters, sector: e.target.value })}
               >
                 <option value="">{t("All Sectors", "جميع القطاعات")}</option>
-                <option value="Telecom infrastructure">{t("Telecom infrastructure", "بنية الاتصالات التحتية")}</option>
-                <option value="Data center & cloud">{t("Data center & cloud", "مركز البيانات والسحابة")}</option>
-                <option value="Contact center / call center">{t("Contact center / call center", "مركز الاتصال / مركز المكالمات")}</option>
-                <option value="Networking & security">{t("Networking & security", "الشبكات والأمن")}</option>
-                <option value="Smart city / IoT">{t("Smart city / IoT", "المدينة الذكية / إنترنت الأشياء")}</option>
+                <option value="telecom">{t("Telecom infrastructure", "بنية الاتصالات التحتية")}</option>
+                <option value="datacenter">{t("Data center & cloud", "مركز البيانات والسحابة")}</option>
+                <option value="callcenter">{t("Contact center / call center", "مركز الاتصال")}</option>
+                <option value="network">{t("Networking & security", "الشبكات والأمن")}</option>
+                <option value="smartcity">{t("Smart city / IoT", "المدينة الذكية")}</option>
               </select>
             </div>
 
@@ -325,10 +325,10 @@ export default function HomePage() {
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
               >
                 <option value="">{t("All Statuses", "جميع الحالات")}</option>
-                <option value="Released">{t("Open", "مفتوحة")}</option>
-                <option value="Closed">{t("Closed", "مغلقة")}</option>
-                <option value="Awarded">{t("Awarded", "تم الترسية")}</option>
-                <option value="Cancelled">{t("Cancelled", "ملغاة")}</option>
+                <option value="open">{t("Open", "مفتوحة")}</option>
+                <option value="closed">{t("Closed", "مغلقة")}</option>
+                <option value="awarded">{t("Awarded", "تم الترسية")}</option>
+                <option value="cancelled">{t("Cancelled", "ملغاة")}</option>
               </select>
             </div>
 

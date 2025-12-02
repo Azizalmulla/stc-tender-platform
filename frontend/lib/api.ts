@@ -132,8 +132,8 @@ export const getTenders = async (params?: {
   lang?: string;
   from_date?: string;
   to_date?: string;
-  sector?: string;
-  status?: string;
+  sector?: string;  // Filters by ai_sectors array
+  deadline_status?: string;  // 'active' or 'expired'
   value_min?: number;
   value_max?: number;
   urgency?: string;

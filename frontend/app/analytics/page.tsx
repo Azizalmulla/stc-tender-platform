@@ -45,7 +45,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 const COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#5856D6', '#AF52DE'];
 
 export default function AnalyticsPage() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const locale = language === 'ar' ? 'ar-KW' : 'en-US';
   
   const { data: summary, isLoading: loadingSummary, refetch: refetchSummary } = useQuery({
     queryKey: ['analytics-summary'],
@@ -140,6 +141,7 @@ export default function AnalyticsPage() {
             value={summary?.total_tenders || 0}
             color="violet"
             loading={loadingSummary}
+            locale={locale}
           />
           <StatCard
             icon={<CheckCircle className="w-6 h-6" />}
@@ -147,6 +149,7 @@ export default function AnalyticsPage() {
             value={summary?.active_tenders || 0}
             color="emerald"
             loading={loadingSummary}
+            locale={locale}
           />
           <StatCard
             icon={<TrendingUp className="w-6 h-6" />}
@@ -154,6 +157,7 @@ export default function AnalyticsPage() {
             value={summary?.new_this_week || 0}
             color="cyan"
             loading={loadingSummary}
+            locale={locale}
           />
           <StatCard
             icon={<AlertTriangle className="w-6 h-6" />}
@@ -161,6 +165,7 @@ export default function AnalyticsPage() {
             value={summary?.deadlines_this_week || 0}
             color="amber"
             loading={loadingSummary}
+            locale={locale}
           />
         </div>
 
@@ -189,12 +194,12 @@ export default function AnalyticsPage() {
                   <XAxis 
                     dataKey="date" 
                     tick={{ fontSize: 10, fill: '#8E8E93' }}
-                    tickFormatter={(val) => new Date(val).toLocaleDateString('ar-KW', { day: 'numeric', month: 'short' })}
+                    tickFormatter={(val) => new Date(val).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                   />
                   <YAxis tick={{ fontSize: 12, fill: '#8E8E93' }} />
                   <Tooltip 
-                    labelFormatter={(val) => new Date(val).toLocaleDateString('ar-KW', { weekday: 'long', day: 'numeric', month: 'long' })}
-                    formatter={(val: number) => [val, 'مناقصات']}
+                    labelFormatter={(val) => new Date(val).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
+                    formatter={(val: number) => [val, t('tenders', 'مناقصات')]}
                   />
                   <Area 
                     type="monotone" 
@@ -327,11 +332,11 @@ export default function AnalyticsPage() {
                 <XAxis 
                   dataKey="date" 
                   tick={{ fontSize: 10, fill: '#8E8E93' }}
-                  tickFormatter={(val) => new Date(val).toLocaleDateString('ar-KW', { day: 'numeric', month: 'short' })}
+                  tickFormatter={(val) => new Date(val).toLocaleDateString(locale, { day: 'numeric', month: 'short' })}
                 />
                 <YAxis tick={{ fontSize: 12, fill: '#8E8E93' }} />
                 <Tooltip 
-                  labelFormatter={(val) => new Date(val).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  labelFormatter={(val) => new Date(val).toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
                   formatter={(val: number) => [val, t('tenders', 'مناقصات')]}
                 />
                 <Bar dataKey="count" fill="#FF3B30" radius={[4, 4, 0, 0]} />
@@ -354,13 +359,15 @@ function StatCard({
   label, 
   value, 
   color, 
-  loading 
+  loading,
+  locale = 'en-US'
 }: { 
   icon: React.ReactNode; 
   label: string; 
   value: number; 
   color: 'violet' | 'emerald' | 'cyan' | 'amber';
   loading?: boolean;
+  locale?: string;
 }) {
   // Apple color mapping
   const iconColors = {
@@ -379,7 +386,7 @@ function StatCard({
       {loading ? (
         <Loader2 className={`w-6 h-6 animate-spin ${iconColors[color]}`} />
       ) : (
-        <div className="text-3xl font-semibold text-[#1C1C1E] dark:text-white">{value.toLocaleString('ar-KW')}</div>
+        <div className="text-3xl font-semibold text-[#1C1C1E] dark:text-white">{value.toLocaleString(locale)}</div>
       )}
     </div>
   );
