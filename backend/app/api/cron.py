@@ -218,18 +218,29 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
         
         print(f"    ✅ Tech-relevant tender detected")
         
-        summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
-        
-        # Voyage embedding
-        embedding = voyage_service.generate_embedding(text, input_type="document")
-        
-        # Get deadline
+        # Get deadline FIRST (before expensive operations)
         new_deadline = extracted.get('deadline')
         if new_deadline and isinstance(new_deadline, str):
             try:
                 new_deadline = datetime.fromisoformat(new_deadline.replace('Z', '+00:00'))
             except:
                 new_deadline = None
+        
+        # Skip expired tenders (deadline has passed) - check BEFORE embedding
+        if new_deadline:
+            today = datetime.now()
+            if new_deadline.tzinfo:
+                today = datetime.now(new_deadline.tzinfo)
+            if new_deadline < today:
+                print(f"    ⏭️  Skipping expired tender (deadline: {new_deadline.strftime('%Y-%m-%d')})")
+                db.close()
+                return None
+            print(f"    ✅ Active tender (deadline: {new_deadline.strftime('%Y-%m-%d')})")
+        
+        summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
+        
+        # Voyage embedding (only for active tenders - saves API cost)
+        embedding = voyage_service.generate_embedding(text, input_type="document")
         
         # Date validation
         date_validation_result = date_validator.validate_deadline(
