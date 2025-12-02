@@ -37,9 +37,14 @@ export function ModernChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasLoadedHistory = useRef(false);
 
-  // Load session ID and conversation history from localStorage on mount
+  // Load session ID and conversation history from localStorage on mount (ONCE only)
   useEffect(() => {
+    // Prevent loading twice
+    if (hasLoadedHistory.current) return;
+    hasLoadedHistory.current = true;
+    
     const loadConversation = async () => {
       const storedSessionId = localStorage.getItem('chat_session_id');
       if (storedSessionId) {
