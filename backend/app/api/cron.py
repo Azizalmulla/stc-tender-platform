@@ -7,6 +7,7 @@ import asyncio
 from typing import Optional
 
 from app.core.config import settings
+from app.core.cache import cache_manager  # For clearing cached responses
 from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
@@ -342,11 +343,15 @@ async def fresh_scrape(
             db.commit()
             db.close()
             
+            # Also clear cached responses
+            cache_cleared = cache_manager.clear_all()
+            
             result["cleared"] = {
                 "tenders": tender_count,
-                "embeddings": embedding_count
+                "embeddings": embedding_count,
+                "cache": cache_cleared
             }
-            print(f"🗑️ Cleared {tender_count} tenders and {embedding_count} embeddings")
+            print(f"🗑️ Cleared {tender_count} tenders, {embedding_count} embeddings, {cache_cleared} cached responses")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
     
@@ -386,10 +391,14 @@ async def clear_database(authorization: Optional[str] = Header(None)):
         db.commit()
         db.close()
         
+        # Also clear cached responses (prevents stale AI answers)
+        cache_cleared = cache_manager.clear_all()
+        
         result = {
             "status": "success",
             "deleted_tenders": tender_count,
             "deleted_embeddings": embedding_count,
+            "cleared_cache": cache_cleared,
             "timestamp": datetime.now().isoformat()
         }
         

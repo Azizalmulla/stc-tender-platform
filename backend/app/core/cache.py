@@ -123,6 +123,23 @@ class CacheManager:
             }
         except Exception as e:
             return {"status": "error", "error": str(e)}
+    
+    def clear_all(self) -> int:
+        """Clear all cached chat responses. Returns number of keys deleted."""
+        if not self.redis:
+            return 0
+        
+        try:
+            # Find all chat response keys
+            keys = self.redis.keys("chat:response:*")
+            if keys:
+                deleted = self.redis.delete(*keys)
+                logger.info(f"🗑️ Cleared {deleted} cached responses")
+                return deleted
+            return 0
+        except Exception as e:
+            logger.error(f"Cache clear error: {e}")
+            return 0
 
 
 # Global cache manager instance
