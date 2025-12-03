@@ -921,7 +921,7 @@ I found [N tenders] in total. Here are the 5 most relevant:
             metadata_context += f"- Sample tenders shown below: {sample_count}\n"
             metadata_context += f"- Use the TOTAL COUNT ({total_count}) when answering 'how many' questions\n\n"
         
-        # Build context from documents
+        # Build context from ALL documents (no limit - we filter in chat.py)
         context = "\n\n---\n\n".join([
             f"رقم المناقصة / Tender Number: {doc.get('tender_number', 'N/A')}\n"
             f"العنوان / Title: {doc['title']}\n"
@@ -929,10 +929,10 @@ I found [N tenders] in total. Here are the 5 most relevant:
             f"التصنيف / Category: {doc.get('category', 'N/A')}\n"
             f"تاريخ النشر / Published: {doc.get('published_at', 'N/A')}\n"
             f"الموعد النهائي / Deadline: {doc.get('deadline', 'N/A')}\n"
-            f"الملخص العربي / Arabic Summary: {doc.get('summary_ar', 'N/A')[:500]}\n"
-            f"الملخص الإنجليزي / English Summary: {doc.get('summary_en', 'N/A')[:500]}\n"
+            f"الملخص العربي / Arabic Summary: {(doc.get('summary_ar') or 'N/A')[:300]}\n"
+            f"الملخص الإنجليزي / English Summary: {(doc.get('summary_en') or 'N/A')[:300]}\n"
             f"الرابط / URL: {doc['url']}"
-            for doc in context_docs[:10]
+            for doc in context_docs
         ])
         
         # Build conversation context (limited to last 6 messages)

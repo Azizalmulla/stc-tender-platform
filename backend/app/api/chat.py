@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 import uuid
 import json
+from datetime import datetime
 from app.db.session import get_db
 from app.models.tender import Tender, TenderEmbedding
 from app.models.conversation import Conversation, Message
@@ -627,22 +628,23 @@ async def ask_question_stream(
         for msg in messages[:-1]
     ]
     
-    # 4. Get relevant tenders using RAG
-    question_embedding = voyage_service.generate_embedding(
-        request.question,
-        input_type="query"
-    )
+    # 4. Get ALL active tenders - let Claude filter based on the question
+    # This is simpler, more accurate, and works for any query type
+    print(f"📊 Fetching all active tenders for Claude...")
     
-    results = db.query(
-        Tender,
-        TenderEmbedding.embedding.cosine_distance(question_embedding).label('distance')
-    ).join(
-        TenderEmbedding, Tender.id == TenderEmbedding.tender_id
-    ).filter(
-        TenderEmbedding.embedding.cosine_distance(question_embedding) < 0.8
-    ).order_by('distance').limit(5).all()  # Limit to 5 for faster streaming
+    now = datetime.now()
     
-    if not results:
+    # Get active tenders: no deadline OR deadline is in the future
+    all_tenders = db.query(Tender).filter(
+        (Tender.deadline.is_(None)) | (Tender.deadline >= now)
+    ).order_by(
+        Tender.deadline.asc().nullslast(),  # Soonest deadlines first
+        Tender.published_at.desc()  # Then by newest
+    ).limit(50).all()  # 50 tenders is plenty for accurate answers
+    
+    print(f"   Found {len(all_tenders)} tenders")
+    
+    if not all_tenders:
         # No results - return helpful message
         async def no_results_stream():
             yield f"data: {json.dumps({'type': 'token', 'content': 'لم أجد معلومات كافية للإجابة على سؤالك.'})}\n\n"
@@ -650,7 +652,7 @@ async def ask_question_stream(
         
         return StreamingResponse(no_results_stream(), media_type="text/event-stream")
     
-    # 5. Prepare context documents
+    # 5. Prepare context documents from ALL tenders
     context_docs = [
         {
             "title": tender.title or "",
@@ -663,7 +665,7 @@ async def ask_question_stream(
             "summary_en": tender.summary_en or "",
             "url": tender.url
         }
-        for tender, distance in results
+        for tender in all_tenders
     ]
     
     # 6. Create streaming generator
@@ -691,17 +693,7 @@ async def ask_question_stream(
             db.add(assistant_message)
             db.commit()
             
-            # Send citations
-            citations = [
-                {
-                    "url": tender.url,
-                    "title": tender.title or "Untitled",
-                    "published_at": tender.published_at.isoformat() if tender.published_at else None
-                }
-                for tender, distance in results[:3]
-            ]
-            
-            yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
+            # Send done signal (citations handled by Claude in response)
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
             
         except Exception as e:
