@@ -825,17 +825,47 @@ I found [N tenders] in total. Here are the 5 most relevant:
             )
             
             response_text = response.content[0].text
+            print(f"📝 Claude raw response length: {len(response_text)} chars")
             
-            # Parse JSON from response
+            # Parse JSON from response - try multiple strategies
             import json
+            import re
+            
+            result = None
+            
+            # Strategy 1: Find JSON block with curly braces
             start_idx = response_text.find('{')
             end_idx = response_text.rfind('}') + 1
             
-            if start_idx == -1 or end_idx == 0:
-                raise ValueError("No JSON found in Claude response")
+            if start_idx != -1 and end_idx > start_idx:
+                try:
+                    json_str = response_text[start_idx:end_idx]
+                    result = json.loads(json_str)
+                except json.JSONDecodeError:
+                    print(f"⚠️ Strategy 1 failed, trying regex...")
             
-            json_str = response_text[start_idx:end_idx]
-            result = json.loads(json_str)
+            # Strategy 2: Use regex to find JSON object
+            if not result:
+                json_pattern = r'\{[^{}]*"answer_ar"[^{}]*"answer_en"[^{}]*\}'
+                match = re.search(json_pattern, response_text, re.DOTALL)
+                if match:
+                    try:
+                        result = json.loads(match.group())
+                    except json.JSONDecodeError:
+                        print(f"⚠️ Strategy 2 failed...")
+            
+            # Strategy 3: If no JSON, use the raw text as the answer
+            if not result:
+                print(f"⚠️ No valid JSON found, using raw text as answer")
+                print(f"📝 Raw response preview: {response_text[:300]}...")
+                # Use the raw response as the answer (Claude sometimes just answers directly)
+                clean_text = response_text.strip()
+                return {
+                    "answer_ar": clean_text,
+                    "answer_en": clean_text,
+                    "citations": [],
+                    "confidence": 0.7
+                }
             
             return {
                 "answer_ar": result.get("answer_ar", "لم أجد إجابة"),

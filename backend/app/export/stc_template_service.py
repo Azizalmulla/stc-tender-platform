@@ -228,7 +228,9 @@ class STCTemplateExporter:
         ws.cell(next_row, 9, tender.tender_type or "")
         ws.cell(next_row, 10, tender.tender_number or "")
         ws.cell(next_row, 11, tender.title or "")
-        ws.cell(next_row, 12, float(tender.tender_fee) if tender.tender_fee else "")
+        # Use explicit tender_fee if set, otherwise fall back to document_price_kd from gazette
+        fee_value = tender.tender_fee or tender.document_price_kd
+        ws.cell(next_row, 12, float(fee_value) if fee_value else "")
     
     def _append_to_future_sheet(self, ws, tender: Tender):
         """Append a single tender to Future Tenders sheet"""
