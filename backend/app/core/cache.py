@@ -48,11 +48,18 @@ class CacheManager:
             self.redis = None
     
     def _get_cache_key(self, question: str, lang: str = "ar") -> str:
-        """Generate cache key from question"""
+        """Generate cache key from question with date for freshness
+        
+        Including date ensures:
+        - Same question asked today vs tomorrow gets fresh response
+        - Deadline comparisons are always accurate (today's date changes)
+        - Cache automatically expires at end of day
+        """
         # Normalize question for better cache hits
         normalized = question.lower().strip()
-        hash_val = hashlib.md5(f"{normalized}:{lang}".encode()).hexdigest()[:16]
-        return f"chat:response:{hash_val}"
+        today = datetime.now().strftime("%Y-%m-%d")  # Include date for freshness
+        hash_val = hashlib.md5(f"{normalized}:{lang}:{today}".encode()).hexdigest()[:16]
+        return f"chat:response:{today}:{hash_val}"
     
     def get_cached_response(self, question: str, lang: str = "ar") -> Optional[Dict]:
         """

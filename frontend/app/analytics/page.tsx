@@ -39,6 +39,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 // Apple-style colors
@@ -47,6 +48,7 @@ const COLORS = ['#007AFF', '#34C759', '#FF9500', '#FF3B30', '#5856D6', '#AF52DE'
 export default function AnalyticsPage() {
   const { t, language } = useLanguage();
   const locale = language === 'ar' ? 'ar-KW' : 'en-US';
+  const router = useRouter();
   
   const { data: summary, isLoading: loadingSummary, refetch: refetchSummary } = useQuery({
     queryKey: ['analytics-summary'],
@@ -81,14 +83,25 @@ export default function AnalyticsPage() {
   const isLoading = loadingSummary || loadingTrends || loadingMinistries || 
                     loadingDeadlines || loadingUrgency || loadingCategories;
 
-  // Prepare urgency chart data - Apple colors
+  // Prepare urgency chart data - Apple colors with navigation URLs
   const urgencyData = urgency ? [
-    { name: t('Urgent (3 days)', 'عاجل (3 أيام)'), value: urgency.urgent_3_days, color: '#FF3B30' },
-    { name: t('This Week', 'هذا الأسبوع'), value: urgency.this_week, color: '#FF9500' },
-    { name: t('This Month', 'هذا الشهر'), value: urgency.this_month, color: '#34C759' },
-    { name: t('Later', 'لاحقاً'), value: urgency.later, color: '#007AFF' },
-    { name: t('Expired', 'منتهي'), value: urgency.expired, color: '#8E8E93' },
+    { name: t('Urgent (3 days)', 'عاجل (3 أيام)'), value: urgency.urgent_3_days, color: '#FF3B30', url: '/?urgency=3_days' },
+    { name: t('This Week', 'هذا الأسبوع'), value: urgency.this_week, color: '#FF9500', url: '/?urgency=this_week' },
+    { name: t('This Month', 'هذا الشهر'), value: urgency.this_month, color: '#34C759', url: '/?urgency=this_month' },
+    { name: t('Later', 'لاحقاً'), value: urgency.later, color: '#007AFF', url: '/?urgency=later' },
+    { name: t('Expired', 'منتهي'), value: urgency.expired, color: '#8E8E93', url: '/?status=expired' },
   ] : [];
+  
+  // Handle urgency chart click
+  const handleUrgencyClick = (data: { url?: string }) => {
+    if (data?.url) router.push(data.url);
+  };
+  
+  // Handle ministry bar click
+  const handleMinistryClick = (data: unknown) => {
+    const payload = data as { ministry?: string };
+    if (payload?.ministry) router.push(`/?ministry=${encodeURIComponent(payload.ministry)}`);
+  };
 
   // Prepare category chart data
   const categoryData = categories?.map(cat => ({
@@ -133,7 +146,7 @@ export default function AnalyticsPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-8">
-        {/* Summary Cards */}
+        {/* Summary Cards - Clickable */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <StatCard
             icon={<FileText className="w-6 h-6" />}
@@ -142,6 +155,7 @@ export default function AnalyticsPage() {
             color="violet"
             loading={loadingSummary}
             locale={locale}
+            onClick={() => router.push('/')}
           />
           <StatCard
             icon={<CheckCircle className="w-6 h-6" />}
@@ -150,6 +164,7 @@ export default function AnalyticsPage() {
             color="emerald"
             loading={loadingSummary}
             locale={locale}
+            onClick={() => router.push('/?status=active')}
           />
           <StatCard
             icon={<TrendingUp className="w-6 h-6" />}
@@ -158,6 +173,7 @@ export default function AnalyticsPage() {
             color="cyan"
             loading={loadingSummary}
             locale={locale}
+            onClick={() => router.push('/?sort=newest')}
           />
           <StatCard
             icon={<AlertTriangle className="w-6 h-6" />}
@@ -166,6 +182,7 @@ export default function AnalyticsPage() {
             color="amber"
             loading={loadingSummary}
             locale={locale}
+            onClick={() => router.push('/?urgency=this_week')}
           />
         </div>
 
@@ -236,9 +253,11 @@ export default function AnalyticsPage() {
                     paddingAngle={3}
                     dataKey="value"
                     label={({ name, percent }) => (percent ?? 0) > 0.05 ? `${((percent ?? 0) * 100).toFixed(0)}%` : ''}
+                    onClick={(data) => handleUrgencyClick(data)}
+                    className="cursor-pointer"
                   >
                     {urgencyData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
+                      <Cell key={`cell-${index}`} fill={entry.color} className="hover:opacity-80 transition-opacity" />
                     ))}
                   </Pie>
                   <Tooltip formatter={(val: number, name: string) => [val, name]} />
@@ -246,7 +265,8 @@ export default function AnalyticsPage() {
                     layout="vertical" 
                     align="right" 
                     verticalAlign="middle"
-                    formatter={(value) => <span className="text-sm">{value}</span>}
+                    formatter={(value) => <span className="text-sm cursor-pointer hover:underline">{value}</span>}
+                    onClick={(data) => handleUrgencyClick(urgencyData.find(u => u.name === data.value) || {})}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -283,7 +303,13 @@ export default function AnalyticsPage() {
                     tickFormatter={(val) => val.length > 25 ? val.substring(0, 25) + '...' : val}
                   />
                   <Tooltip formatter={(val: number) => [val, t('tenders', 'مناقصات')]} />
-                  <Bar dataKey="count" fill="#5856D6" radius={[0, 4, 4, 0]} />
+                  <Bar 
+                    dataKey="count" 
+                    fill="#5856D6" 
+                    radius={[0, 4, 4, 0]} 
+                    className="cursor-pointer"
+                    onClick={(data) => handleMinistryClick(data)}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -353,14 +379,15 @@ export default function AnalyticsPage() {
   );
 }
 
-// Stat Card Component - Apple style
+// Stat Card Component - Apple style (Clickable)
 function StatCard({ 
   icon, 
   label, 
   value, 
   color, 
   loading,
-  locale = 'en-US'
+  locale = 'en-US',
+  onClick
 }: { 
   icon: React.ReactNode; 
   label: string; 
@@ -368,6 +395,7 @@ function StatCard({
   color: 'violet' | 'emerald' | 'cyan' | 'amber';
   loading?: boolean;
   locale?: string;
+  onClick?: () => void;
 }) {
   // Apple color mapping
   const iconColors = {
@@ -378,7 +406,10 @@ function StatCard({
   };
 
   return (
-    <div className="bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-sm transition-all hover:shadow-md">
+    <div 
+      onClick={onClick}
+      className={`bg-white dark:bg-[#1C1C1E] rounded-2xl p-5 shadow-sm transition-all hover:shadow-md ${onClick ? 'cursor-pointer hover:scale-[1.02]' : ''}`}
+    >
       <div className="flex items-center gap-3 mb-2">
         <span className={iconColors[color]}>{icon}</span>
         <span className="text-sm font-medium text-[#8E8E93]">{label}</span>
