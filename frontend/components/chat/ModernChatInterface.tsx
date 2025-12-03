@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUp, User, Loader2 } from "lucide-react";
+import { ArrowUp, User, Loader2, MessageSquarePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import Image from "next/image";
@@ -229,6 +229,28 @@ export function ModernChatInterface() {
     }
   };
 
+  const handleNewChat = () => {
+    // Clear session from localStorage
+    localStorage.removeItem('chat_session_id');
+    setSessionId(null);
+    
+    // Reset to welcome message
+    setMessages([
+      {
+        id: "1",
+        role: "assistant",
+        content: t(
+          "Hello! I'm your AI agent for government tenders. How can I help you today?",
+          "مرحباً! أنا الوكيل الذكي للمناقصات الحكومية. كيف يمكنني مساعدتك اليوم؟"
+        ),
+        timestamp: new Date(),
+      },
+    ]);
+    
+    // Focus the input
+    inputRef.current?.focus();
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-5rem)] w-full max-w-5xl mx-auto">
       {/* Header */}
@@ -251,10 +273,22 @@ export function ModernChatInterface() {
             )}
           </p>
         </div>
-        <Badge variant="secondary" className="gap-1">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          {t("Online", "متصل")}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewChat}
+            className="gap-2 text-muted-foreground hover:text-foreground"
+            disabled={isLoading}
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t("New Chat", "محادثة جديدة")}</span>
+          </Button>
+          <Badge variant="secondary" className="gap-1">
+            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+            {t("Online", "متصل")}
+          </Badge>
+        </div>
       </div>
 
       {/* Messages */}
