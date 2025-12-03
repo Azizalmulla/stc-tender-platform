@@ -17,7 +17,15 @@ class ClaudeOCRService:
     def __init__(self):
         if not settings.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY not configured")
-        self.client = Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        # Best practice: Configure SDK-level retry and timeout
+        # - max_retries=5: Retry 5 times (default is 2) for transient errors
+        # - timeout=120: 2 minute timeout (prevents hanging on slow responses)
+        # SDK auto-retries: connection errors, 408, 429, 500+ with exponential backoff
+        self.client = Anthropic(
+            api_key=settings.ANTHROPIC_API_KEY,
+            max_retries=5,
+            timeout=120.0  # 2 minutes
+        )
         self.model = settings.CLAUDE_MODEL
     
     def _call_with_retry(self, messages: list, max_tokens: int = 4096, max_retries: int = 3) -> Any:
