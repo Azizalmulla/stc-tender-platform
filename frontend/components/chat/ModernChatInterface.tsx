@@ -407,16 +407,37 @@ export function ModernChatInterface() {
           </Button>
         </div>
 
-        {/* Quick suggestions */}
+        {/* Quick suggestions - clickable */}
         <div className="flex flex-wrap gap-2 mt-3 max-w-4xl mx-auto justify-center">
-          <Badge variant="outline" className="cursor-pointer hover:bg-primary/5 rounded-full">
-            {t("Latest Tenders", "أحدث المناقصات")}
+          <Badge 
+            variant="outline" 
+            className="cursor-pointer hover:bg-primary/10 rounded-full transition-colors"
+            onClick={() => {
+              setInput(t("What IT tenders are closing soon?", "ما هي مناقصات تكنولوجيا المعلومات التي تنتهي قريباً؟"));
+              setTimeout(() => handleSend(), 100);
+            }}
+          >
+            {t("IT Tenders Closing Soon", "مناقصات IT القريبة")}
           </Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-primary/5 rounded-full">
-            {t("Electricity Tenders", "مناقصات الكهرباء")}
+          <Badge 
+            variant="outline" 
+            className="cursor-pointer hover:bg-primary/10 rounded-full transition-colors"
+            onClick={() => {
+              setInput(t("Show me the latest tech tenders", "أظهر لي أحدث المناقصات التقنية"));
+              setTimeout(() => handleSend(), 100);
+            }}
+          >
+            {t("Latest Tech Tenders", "أحدث المناقصات التقنية")}
           </Badge>
-          <Badge variant="outline" className="cursor-pointer hover:bg-primary/5 rounded-full">
-            {t("Application Requirements", "شروط التقديم")}
+          <Badge 
+            variant="outline" 
+            className="cursor-pointer hover:bg-primary/10 rounded-full transition-colors"
+            onClick={() => {
+              setInput(t("Tenders from oil sector companies", "مناقصات شركات النفط"));
+              setTimeout(() => handleSend(), 100);
+            }}
+          >
+            {t("Oil Sector Tenders", "مناقصات قطاع النفط")}
           </Badge>
         </div>
       </div>
