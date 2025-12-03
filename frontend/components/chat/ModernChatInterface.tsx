@@ -107,62 +107,92 @@ export function ModernChatInterface() {
     setInput("");
     setIsLoading(true);
 
-    try {
-      // Call chat API with retry for transient failures
-      const fetchWithRetry = async (retries = 2): Promise<Response> => {
-        try {
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/ask`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              question: questionText,
-              session_id: sessionId,
-              lang: language,
-              limit: 5,
-            }),
-          });
-          
-          if (!response.ok && retries > 0) {
-            console.log(`Retrying... (${retries} attempts left)`);
-            await new Promise(r => setTimeout(r, 1000));
-            return fetchWithRetry(retries - 1);
-          }
-          return response;
-        } catch (e) {
-          if (retries > 0) {
-            console.log(`Network error, retrying... (${retries} attempts left)`);
-            await new Promise(r => setTimeout(r, 1000));
-            return fetchWithRetry(retries - 1);
-          }
-          throw e;
-        }
-      };
+    // Create a placeholder for the streaming response
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, assistantMessage]);
 
-      const response = await fetchWithRetry();
+    try {
+      // Use streaming endpoint for real-time response
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat/ask/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: questionText,
+          session_id: sessionId,
+          lang: language,
+          limit: 5,
+        }),
+      });
 
       if (!response.ok) {
         throw new Error('Failed to get response');
       }
 
-      const data = await response.json();
-      
-      // Save session ID from response
-      if (data.session_id) {
-        setSessionId(data.session_id);
-        localStorage.setItem('chat_session_id', data.session_id);
-      }
-      
-      // Use response based on current language
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: language === 'ar' ? data.answer_ar : data.answer_en,
-        timestamp: new Date(),
-      };
+      // Read the stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      if (!reader) {
+        throw new Error('No reader available');
+      }
+
+      let streamedContent = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.type === 'session_id' && data.session_id) {
+                setSessionId(data.session_id);
+                localStorage.setItem('chat_session_id', data.session_id);
+              } else if (data.type === 'token' && data.content) {
+                streamedContent += data.content;
+                // Update the message content in real-time
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: streamedContent }
+                      : msg
+                  )
+                );
+              } else if (data.type === 'error') {
+                throw new Error(data.message || 'Stream error');
+              }
+              // 'done' and 'citations' types are handled silently
+            } catch (parseError) {
+              // Ignore JSON parse errors for incomplete chunks
+            }
+          }
+        }
+      }
+
+      // If no content was streamed, show a fallback message
+      if (!streamedContent) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: t("No response received.", "لم يتم استلام أي رد.") }
+              : msg
+          )
+        );
+      }
+
     } catch (error) {
       console.error("Chat API Error:", error);
       
@@ -179,13 +209,14 @@ export function ModernChatInterface() {
         );
       }
       
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: errorText,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      // Update the existing assistant message with error
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: errorText }
+            : msg
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -286,8 +317,8 @@ export function ModernChatInterface() {
             </div>
           ))}
 
-          {/* Loading indicator */}
-          {isLoading && (
+          {/* Loading indicator - only show when waiting for first token */}
+          {isLoading && messages[messages.length - 1]?.content === "" && (
             <div className="flex gap-3 items-start">
               <Avatar className="h-10 w-10 bg-white shadow-sm">
                 <AvatarFallback>
