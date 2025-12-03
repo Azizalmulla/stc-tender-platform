@@ -294,7 +294,7 @@ export function ModernChatInterface() {
       {/* Messages */}
       <ScrollArea className="flex-1 p-6" ref={scrollAreaRef}>
         <div className="space-y-6">
-          {messages.map((message) => (
+          {messages.filter((msg) => msg.content).map((message) => (
             <div
               key={message.id}
               className={cn(
