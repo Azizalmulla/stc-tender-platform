@@ -741,9 +741,11 @@ async def generate_embeddings(authorization: Optional[str] = Header(None)):
 @router.post("/extract-tender-values")
 async def extract_tender_values(authorization: Optional[str] = Header(None)):
     """
-    One-time job to extract tender values from body/summary text using Claude.
-    Populates the expected_value field for filtering.
+    One-time job to extract tender values AND classify sectors using Claude.
+    Populates expected_value and ai_sectors fields for accurate filtering.
     """
+    import json
+    
     cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
     if cron_secret and authorization != f"Bearer {cron_secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -751,16 +753,14 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
     try:
         db = SessionLocal()
         
-        # Get tenders without expected_value
-        tenders = db.query(Tender).filter(
-            Tender.expected_value.is_(None)
-        ).all()
+        # Get all tenders (re-process all for sector classification)
+        tenders = db.query(Tender).all()
         
-        print(f"📊 Found {len(tenders)} tenders without expected_value")
+        print(f"📊 Processing {len(tenders)} tenders for value + sector extraction")
         
         if not tenders:
             db.close()
-            return {"status": "success", "message": "All tenders already have values", "extracted": 0}
+            return {"status": "success", "message": "No tenders found", "extracted": 0}
         
         extracted = 0
         
@@ -772,53 +772,77 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
                 if len(text.strip()) < 50:
                     continue
                 
-                # Use Claude to extract value
-                prompt = f"""Extract the tender/project value from this text. Return ONLY a number in KD (Kuwaiti Dinar).
-If the value is in millions, convert to full number (e.g., 1.5 million = 1500000).
-If no value is mentioned, return 0.
-Return ONLY the number, nothing else.
+                # Use Claude to extract value AND classify sectors
+                prompt = f"""Analyze this government tender and extract:
+
+1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
+
+2. **sectors**: Which STC business sectors this tender is relevant to. Choose from ONLY these options:
+   - "telecom" (telecommunications, fiber, 5G, mobile networks)
+   - "datacenter" (data centers, cloud, servers, hosting)
+   - "callcenter" (call centers, contact centers, customer service, IVR)
+   - "network" (networking, security, firewalls, routers, switches)
+   - "smartcity" (smart city, IoT, sensors, automation)
+   
+   Return empty array [] if none match.
+
+Return ONLY valid JSON in this exact format:
+{{"value": 0, "sectors": []}}
 
 Text:
 {text[:3000]}"""
 
                 response = claude_service.client.messages.create(
                     model="claude-sonnet-4-20250514",
-                    max_tokens=50,
+                    max_tokens=100,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
-                value_str = response.content[0].text.strip()
-                # Clean and parse
-                value_str = value_str.replace(",", "").replace("KD", "").replace("kd", "").strip()
+                response_text = response.content[0].text.strip()
                 
+                # Parse JSON response
                 try:
-                    value = float(value_str)
-                    if value > 0:
-                        tender.expected_value = value
+                    # Find JSON in response
+                    start = response_text.find('{')
+                    end = response_text.rfind('}') + 1
+                    if start >= 0 and end > start:
+                        data = json.loads(response_text[start:end])
+                        
+                        value = data.get('value', 0)
+                        sectors = data.get('sectors', [])
+                        
+                        # Update tender
+                        if value and value > 0:
+                            tender.expected_value = float(value)
+                        
+                        if sectors:
+                            tender.ai_sectors = sectors
+                        
                         extracted += 1
-                        print(f"  ✅ Tender {tender.id}: {value:,.0f} KD")
-                except ValueError:
-                    print(f"  ⚠️ Tender {tender.id}: Could not parse '{value_str}'")
+                        print(f"  ✅ Tender {tender.id}: {value:,.0f} KD, sectors: {sectors}")
+                        
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"  ⚠️ Tender {tender.id}: Could not parse response: {response_text[:100]}")
                     continue
                 
                 if extracted % 10 == 0:
                     db.commit()
                     
             except Exception as e:
-                print(f"  ⚠️ Error extracting value for tender {tender.id}: {e}")
+                print(f"  ⚠️ Error processing tender {tender.id}: {e}")
                 continue
         
         db.commit()
         db.close()
         
-        print(f"✅ Successfully extracted values for {extracted} tenders")
+        print(f"✅ Successfully processed {extracted} tenders")
         
         return {
             "status": "success",
-            "message": f"Extracted values for {extracted} tenders",
+            "message": f"Extracted values and sectors for {extracted} tenders",
             "extracted": extracted
         }
         
     except Exception as e:
-        print(f"❌ Error extracting tender values: {e}")
+        print(f"❌ Error extracting tender data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
