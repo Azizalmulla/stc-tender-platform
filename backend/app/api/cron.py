@@ -292,6 +292,56 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
             embedding=embedding
         )
         db.add(tender_embedding)
+        
+        # Extract value and classify sectors using Claude
+        try:
+            import json
+            extract_text = f"{tender.title or ''}\n{body_text or ''}\n{summary_data.get('summary_ar', '')}\n{summary_data.get('summary_en', '')}"
+            
+            if len(extract_text.strip()) >= 50:
+                extract_prompt = f"""Analyze this government tender and extract:
+
+1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
+
+2. **sectors**: Which STC business sectors this tender is relevant to. Choose from ONLY these options:
+   - "telecom" (telecommunications, fiber, 5G, mobile networks)
+   - "datacenter" (data centers, cloud, servers, hosting)
+   - "callcenter" (call centers, contact centers, customer service, IVR)
+   - "network" (networking, security, firewalls, routers, switches)
+   - "smartcity" (smart city, IoT, sensors, automation)
+   
+   Return empty array [] if none match.
+
+Return ONLY valid JSON in this exact format:
+{{"value": 0, "sectors": []}}
+
+Text:
+{extract_text[:3000]}"""
+
+                extract_response = claude_service.client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=100,
+                    messages=[{"role": "user", "content": extract_prompt}]
+                )
+                
+                extract_text_response = extract_response.content[0].text.strip()
+                start = extract_text_response.find('{')
+                end = extract_text_response.rfind('}') + 1
+                if start >= 0 and end > start:
+                    extract_data = json.loads(extract_text_response[start:end])
+                    
+                    value = extract_data.get('value', 0)
+                    sectors = extract_data.get('sectors', [])
+                    
+                    if value and value > 0:
+                        tender.expected_value = float(value)
+                    if sectors:
+                        tender.ai_sectors = sectors
+                    
+                    print(f"    💰 Value: {value:,.0f} KD, Sectors: {sectors}")
+        except Exception as e:
+            print(f"    ⚠️ Value/sector extraction failed: {e}")
+        
         db.commit()
         
         tender_id = tender.id
