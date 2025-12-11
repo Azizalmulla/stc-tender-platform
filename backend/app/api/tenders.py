@@ -107,19 +107,25 @@ async def get_tenders(
     if to_date:
         filters.append(Tender.published_at <= to_date)
     
-    # Sector filter - match explicit sector OR any AI-detected sector (array cast to text for substring match)
+    # Sector filter - match explicit sector OR any AI-detected sector (array -> string for substring match)
     if sector:
         filters.append(or_(
             Tender.sector.ilike(f"%{sector}%"),
-            cast(Tender.ai_sectors, SAText).ilike(f"%{sector}%")
+            func.array_to_string(Tender.ai_sectors, ',').ilike(f"%{sector}%")
         ))
     
-    # Value range filter
+    # Value range filter (fallback to document_price_kd if expected_value is null)
     if value_min is not None:
-        filters.append(Tender.expected_value >= value_min)
+        filters.append(or_(
+            Tender.expected_value >= value_min,
+            and_(Tender.expected_value.is_(None), Tender.document_price_kd >= value_min)
+        ))
     
     if value_max is not None:
-        filters.append(Tender.expected_value <= value_max)
+        filters.append(or_(
+            Tender.expected_value <= value_max,
+            and_(Tender.expected_value.is_(None), Tender.document_price_kd <= value_max)
+        ))
     
     # Status filter - maps to deadline or AI-detected status field
     if deadline_status:
