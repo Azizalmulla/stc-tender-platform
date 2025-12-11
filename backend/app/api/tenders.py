@@ -108,24 +108,25 @@ async def get_tenders(
         filters.append(Tender.published_at <= to_date)
     
     # Sector filter - match explicit sector OR any AI-detected sector (array -> string for substring match)
+    # Also search in category/title/summaries to be more tolerant
     if sector:
         filters.append(or_(
             Tender.sector.ilike(f"%{sector}%"),
-            func.array_to_string(Tender.ai_sectors, ',').ilike(f"%{sector}%")
+            func.array_to_string(Tender.ai_sectors, ',').ilike(f"%{sector}%"),
+            Tender.category.ilike(f"%{sector}%"),
+            Tender.title.ilike(f"%{sector}%"),
+            Tender.summary_en.ilike(f"%{sector}%"),
+            Tender.summary_ar.ilike(f"%{sector}%"),
+            Tender.body.ilike(f"%{sector}%")
         ))
     
-    # Value range filter (fallback to document_price_kd if expected_value is null)
+    # Value range filter (coalesce expected_value -> document_price_kd)
+    value_expr = func.coalesce(Tender.expected_value, Tender.document_price_kd)
     if value_min is not None:
-        filters.append(or_(
-            Tender.expected_value >= value_min,
-            and_(Tender.expected_value.is_(None), Tender.document_price_kd >= value_min)
-        ))
+        filters.append(value_expr >= value_min)
     
     if value_max is not None:
-        filters.append(or_(
-            Tender.expected_value <= value_max,
-            and_(Tender.expected_value.is_(None), Tender.document_price_kd <= value_max)
-        ))
+        filters.append(value_expr <= value_max)
     
     # Status filter - maps to deadline or AI-detected status field
     if deadline_status:
