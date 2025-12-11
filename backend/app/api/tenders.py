@@ -107,18 +107,29 @@ async def get_tenders(
     if to_date:
         filters.append(Tender.published_at <= to_date)
     
-    # Sector filter - match explicit sector OR any AI-detected sector (array -> string for substring match)
-    # Also search in category/title/summaries to be more tolerant
-    if sector:
-        filters.append(or_(
-            Tender.sector.ilike(f"%{sector}%"),
-            func.array_to_string(Tender.ai_sectors, ',').ilike(f"%{sector}%"),
-            Tender.category.ilike(f"%{sector}%"),
-            Tender.title.ilike(f"%{sector}%"),
-            Tender.summary_en.ilike(f"%{sector}%"),
-            Tender.summary_ar.ilike(f"%{sector}%"),
-            Tender.body.ilike(f"%{sector}%")
-        ))
+    # Sector filter - expand keywords to match Arabic + English variations
+    SECTOR_KEYWORDS = {
+        "telecom": ["telecom", "telecommunications", "اتصالات", "الاتصالات", "fiber", "فايبر", "5g", "mobile", "gsm", "lte"],
+        "datacenter": ["datacenter", "data center", "data-center", "cloud", "server", "hosting", "مركز البيانات", "سحابة", "سيرفر", "خادم"],
+        "callcenter": ["call center", "callcenter", "contact center", "مركز الاتصال", "خدمة العملاء", "customer service", "ivr", "pbx"],
+        "network": ["network", "networking", "security", "firewall", "router", "switch", "cisco", "الشبكات", "شبكة", "أمن", "جدار ناري"],
+        "smartcity": ["smart city", "smartcity", "iot", "internet of things", "المدينة الذكية", "انترنت الأشياء", "sensors", "حساسات"]
+    }
+    
+    if sector and sector in SECTOR_KEYWORDS:
+        keywords = SECTOR_KEYWORDS[sector]
+        keyword_conditions = []
+        for kw in keywords:
+            keyword_conditions.extend([
+                Tender.sector.ilike(f"%{kw}%"),
+                func.array_to_string(Tender.ai_sectors, ',').ilike(f"%{kw}%"),
+                Tender.category.ilike(f"%{kw}%"),
+                Tender.title.ilike(f"%{kw}%"),
+                Tender.summary_en.ilike(f"%{kw}%"),
+                Tender.summary_ar.ilike(f"%{kw}%"),
+                Tender.body.ilike(f"%{kw}%")
+            ])
+        filters.append(or_(*keyword_conditions))
     
     # Value range filter (coalesce expected_value -> document_price_kd)
     value_expr = func.coalesce(Tender.expected_value, Tender.document_price_kd)
