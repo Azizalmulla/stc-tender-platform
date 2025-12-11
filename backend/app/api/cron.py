@@ -736,3 +736,89 @@ async def generate_embeddings(authorization: Optional[str] = Header(None)):
     except Exception as e:
         print(f"❌ Error generating embeddings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/extract-tender-values")
+async def extract_tender_values(authorization: Optional[str] = Header(None)):
+    """
+    One-time job to extract tender values from body/summary text using Claude.
+    Populates the expected_value field for filtering.
+    """
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        db = SessionLocal()
+        
+        # Get tenders without expected_value
+        tenders = db.query(Tender).filter(
+            Tender.expected_value.is_(None)
+        ).all()
+        
+        print(f"📊 Found {len(tenders)} tenders without expected_value")
+        
+        if not tenders:
+            db.close()
+            return {"status": "success", "message": "All tenders already have values", "extracted": 0}
+        
+        extracted = 0
+        
+        for tender in tenders:
+            try:
+                # Combine text for extraction
+                text = f"{tender.title or ''}\n{tender.body or ''}\n{tender.summary_ar or ''}\n{tender.summary_en or ''}"
+                
+                if len(text.strip()) < 50:
+                    continue
+                
+                # Use Claude to extract value
+                prompt = f"""Extract the tender/project value from this text. Return ONLY a number in KD (Kuwaiti Dinar).
+If the value is in millions, convert to full number (e.g., 1.5 million = 1500000).
+If no value is mentioned, return 0.
+Return ONLY the number, nothing else.
+
+Text:
+{text[:3000]}"""
+
+                response = claude_service.client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=50,
+                    messages=[{"role": "user", "content": prompt}]
+                )
+                
+                value_str = response.content[0].text.strip()
+                # Clean and parse
+                value_str = value_str.replace(",", "").replace("KD", "").replace("kd", "").strip()
+                
+                try:
+                    value = float(value_str)
+                    if value > 0:
+                        tender.expected_value = value
+                        extracted += 1
+                        print(f"  ✅ Tender {tender.id}: {value:,.0f} KD")
+                except ValueError:
+                    print(f"  ⚠️ Tender {tender.id}: Could not parse '{value_str}'")
+                    continue
+                
+                if extracted % 10 == 0:
+                    db.commit()
+                    
+            except Exception as e:
+                print(f"  ⚠️ Error extracting value for tender {tender.id}: {e}")
+                continue
+        
+        db.commit()
+        db.close()
+        
+        print(f"✅ Successfully extracted values for {extracted} tenders")
+        
+        return {
+            "status": "success",
+            "message": f"Extracted values for {extracted} tenders",
+            "extracted": extracted
+        }
+        
+    except Exception as e:
+        print(f"❌ Error extracting tender values: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
