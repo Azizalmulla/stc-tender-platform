@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, and_, or_, func, nullslast
+from sqlalchemy import desc, and_, or_, func, nullslast, cast, Text as SAText
 from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from app.db.session import get_db
@@ -95,7 +95,8 @@ async def get_tenders(
         filters.append(Tender.ministry.ilike(f"%{ministry}%"))
     
     if category:
-        filters.append(Tender.category == category)
+        # Use ILIKE for looser matching (covers Arabic/English case variations)
+        filters.append(Tender.category.ilike(f"%{category}%"))
     
     if lang:
         filters.append(Tender.lang == lang)
@@ -106,9 +107,12 @@ async def get_tenders(
     if to_date:
         filters.append(Tender.published_at <= to_date)
     
-    # Sector filter - uses AI-detected STC sector
+    # Sector filter - match explicit sector OR any AI-detected sector (array cast to text for substring match)
     if sector:
-        filters.append(Tender.sector == sector)
+        filters.append(or_(
+            Tender.sector.ilike(f"%{sector}%"),
+            cast(Tender.ai_sectors, SAText).ilike(f"%{sector}%")
+        ))
     
     # Value range filter
     if value_min is not None:
@@ -119,15 +123,13 @@ async def get_tenders(
     
     # Status filter - maps to deadline or AI-detected status field
     if deadline_status:
-        now = datetime.now(timezone.utc)
+        now = func.now()
         if deadline_status == "open":
-            # Open = deadline in future OR status is Open/Released
+            # Open = deadline in future OR no deadline set (most tenders)
+            # Don't filter by status field since it's often NULL
             filters.append(or_(
-                and_(
-                    Tender.deadline.isnot(None),
-                    Tender.deadline >= now
-                ),
-                Tender.status.in_(["Open", "Released"])
+                Tender.deadline.is_(None),
+                Tender.deadline >= now
             ))
         elif deadline_status == "closed":
             # Closed = deadline passed (but not awarded/cancelled)
@@ -144,7 +146,7 @@ async def get_tenders(
             filters.append(Tender.status == "Cancelled")
     
     if urgency:
-        now = datetime.now(timezone.utc)
+        now = func.now()
         if urgency == "7_days":
             deadline_threshold = now + timedelta(days=7)
             filters.append(and_(
