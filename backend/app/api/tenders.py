@@ -142,19 +142,18 @@ async def get_tenders(
     # Status filter - maps to deadline or AI-detected status field
     if deadline_status:
         now = func.now()
-        if deadline_status == "open":
-            # Open = deadline in future OR no deadline set (most tenders)
+        if deadline_status in ["open", "active"]:
+            # Open/Active = deadline in future OR no deadline set (most tenders)
             # Don't filter by status field since it's often NULL
             filters.append(or_(
                 Tender.deadline.is_(None),
                 Tender.deadline >= now
             ))
-        elif deadline_status == "closed":
-            # Closed = deadline passed (but not awarded/cancelled)
+        elif deadline_status in ["closed", "expired"]:
+            # Closed/Expired = deadline passed
             filters.append(and_(
                 Tender.deadline.isnot(None),
-                Tender.deadline < now,
-                ~Tender.status.in_(["Awarded", "Cancelled"])
+                Tender.deadline < now
             ))
         elif deadline_status == "awarded":
             # Awarded = AI detected or manually set
@@ -165,7 +164,21 @@ async def get_tenders(
     
     if urgency:
         now = func.now()
-        if urgency == "7_days":
+        if urgency == "3_days":
+            deadline_threshold = now + timedelta(days=3)
+            filters.append(and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline >= now,
+                Tender.deadline <= deadline_threshold
+            ))
+        elif urgency == "7_days":
+            deadline_threshold = now + timedelta(days=7)
+            filters.append(and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline >= now,
+                Tender.deadline <= deadline_threshold
+            ))
+        elif urgency == "this_week":
             deadline_threshold = now + timedelta(days=7)
             filters.append(and_(
                 Tender.deadline.isnot(None),
@@ -178,6 +191,19 @@ async def get_tenders(
                 Tender.deadline.isnot(None),
                 Tender.deadline >= now,
                 Tender.deadline <= deadline_threshold
+            ))
+        elif urgency == "this_month":
+            deadline_threshold = now + timedelta(days=30)
+            filters.append(and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline >= now,
+                Tender.deadline <= deadline_threshold
+            ))
+        elif urgency == "later":
+            deadline_threshold = now + timedelta(days=30)
+            filters.append(and_(
+                Tender.deadline.isnot(None),
+                Tender.deadline > deadline_threshold
             ))
     
     if filters:
