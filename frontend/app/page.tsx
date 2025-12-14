@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getTenders, getTenderStats, Tender } from "@/lib/api";
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { ModernTenderCard } from "@/components/tenders/ModernTenderCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,15 +22,30 @@ export default function HomePage() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const { savedTenderIds, savedCount } = useSavedTenders();
+  const searchParams = useSearchParams();
   const [showSavedOnly, setShowSavedOnly] = useState(false);
+  
+  // Initialize filters from URL params
   const [filters, setFilters] = useState({
-    ministry: "",
-    category: "",
-    sector: "",
-    status: "",  // "active" or "expired"
-    value_range: "",
-    urgency: "",
+    ministry: searchParams.get("ministry") || "",
+    category: searchParams.get("category") || "",
+    sector: searchParams.get("sector") || "",
+    status: searchParams.get("status") || "",  // "active" or "expired"
+    value_range: searchParams.get("value_range") || "",
+    urgency: searchParams.get("urgency") || "",
   });
+  
+  // Update filters when URL params change
+  useEffect(() => {
+    setFilters({
+      ministry: searchParams.get("ministry") || "",
+      category: searchParams.get("category") || "",
+      sector: searchParams.get("sector") || "",
+      status: searchParams.get("status") || "",
+      value_range: searchParams.get("value_range") || "",
+      urgency: searchParams.get("urgency") || "",
+    });
+  }, [searchParams]);
   const [selectedTenders, setSelectedTenders] = useState<Set<number>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
   
