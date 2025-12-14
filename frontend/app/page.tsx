@@ -2,7 +2,7 @@
 // Updated to connect to production backend
 import { useQuery } from "@tanstack/react-query";
 import { getTenders, getTenderStats, Tender } from "@/lib/api";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { ModernTenderCard } from "@/components/tenders/ModernTenderCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,31 @@ import { useSavedTenders } from "@/hooks/useSavedTenders";
 
 const PAGE_SIZE = 50;
 
+// Wrapper component to handle Suspense boundary for useSearchParams
 export default function HomePage() {
+  return (
+    <Suspense fallback={<HomePageSkeleton />}>
+      <HomePageContent />
+    </Suspense>
+  );
+}
+
+function HomePageSkeleton() {
+  return (
+    <div className="min-h-screen bg-[#F2F2F7] dark:bg-black p-4">
+      <div className="max-w-7xl mx-auto">
+        <Skeleton className="h-12 w-64 mb-8" />
+        <div className="grid gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-2xl" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HomePageContent() {
   const { t } = useLanguage();
   const { toast } = useToast();
   const { savedTenderIds, savedCount } = useSavedTenders();
