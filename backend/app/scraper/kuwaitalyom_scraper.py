@@ -118,7 +118,7 @@ class KuwaitAlyomScraper:
             logger.info("🔐 Logging in to Kuwait Al-Yawm...")
             
             # Get login page to retrieve tokens
-            login_page_url = f"{self.base_url}/Account/Login"
+            login_page_url = f"{self.base_url}/Account/LoginOnline"
             response = self.session.get(login_page_url)
             response.raise_for_status()
             
