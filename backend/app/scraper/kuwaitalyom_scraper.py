@@ -27,12 +27,12 @@ logger = logging.getLogger(__name__)
 
 class IPv4Adapter(HTTPAdapter):
     """Force IPv4 connections — Kuwait Alyom CDN blocks IPv6 from non-KW servers"""
-    def init_poolmanager(self, *args, **kwargs):
-        kwargs['socket_options'] = HTTPAdapter.DEFAULT_POOLBLOCK
+    def init_poolmanager(self, num_pools, maxsize, block=False, **kwargs):
         self.poolmanager = PoolManager(
-            *args,
+            num_pools=num_pools,
+            maxsize=maxsize,
+            block=block,
             socket_family=socket.AF_INET,
-            **{k: v for k, v in kwargs.items() if k != 'socket_options'}
         )
 
 
