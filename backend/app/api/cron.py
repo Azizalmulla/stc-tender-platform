@@ -260,8 +260,10 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
                     except:
                         pass
         
-        # Get ministry
+        # Get ministry (strip any trailing punctuation Claude occasionally includes)
         ministry = extracted.get('ministry') or tender_data.get('ministry')
+        if ministry and isinstance(ministry, str):
+            ministry = ministry.strip().rstrip('",;')
         
         # Create tender
         tender = Tender(
