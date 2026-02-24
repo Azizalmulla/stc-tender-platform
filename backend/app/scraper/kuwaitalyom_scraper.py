@@ -1226,6 +1226,12 @@ STRUCTURED TEXT:"""
             url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
             page.goto(url, timeout=30000)
             page.wait_for_load_state("networkidle", timeout=15000)
+            # Wait for flipbook canvas/content to render (JS decrypts the proprietary PDF format)
+            try:
+                page.wait_for_selector("canvas, .page-content, .flipbook-page img", timeout=10000)
+            except Exception:
+                pass  # Proceed even if selector not found
+            page.wait_for_timeout(3000)  # Extra 3s for rendering
             screenshot_bytes = page.screenshot(full_page=False)
             page.close()
             print(f"✅ Playwright screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
