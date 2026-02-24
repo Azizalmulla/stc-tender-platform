@@ -35,7 +35,7 @@ Screenshot
 ### **Fallback Pipeline (Claude AI)**
 Only used if Mistral fails (expected: <5% of time)
 ```
-Same flow but using Claude Sonnet 4.5 for all steps
+Same flow but using Claude Sonnet 4.6 for all steps
 Cost: $0.023 per tender (5x more expensive)
 ```
 
@@ -233,12 +233,12 @@ Check logs for:
 🖼️  Using screenshot-based extraction...
   🚀 Using Mistral OCR for text extraction (primary)...
   ⚠️  Mistral OCR failed: 529 Overloaded, trying Claude fallback...
-  🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)...
+  🧠 Using Claude Sonnet 4.6 for OCR and extraction (fallback)...
   ✅ Claude extracted 3104 characters
   
   🚀 Using Mistral Large for summarization and extraction (primary)...
   ⚠️  Mistral AI failed: Connection error, falling back to Claude...
-  🧠 Using Claude Sonnet 4.5 for summarization and extraction (fallback)...
+  🧠 Using Claude Sonnet 4.6 for summarization and extraction (fallback)...
 
 ✅ Saved tender: 2026/2025/70 (ID: 2)
 ```
@@ -346,8 +346,8 @@ Check logs for:
 - **Context:** 128K tokens
 - **Docs:** https://docs.mistral.ai/
 
-### Claude Sonnet 4.5
-- **Model:** `claude-sonnet-4-5-20250929`
+### Claude Sonnet 4.6
+- **Model:** `claude-sonnet-4-6`
 - **Pricing:** ~$3 per 1M tokens (input), ~$15 per 1M tokens (output)
 - **Context:** 200K tokens
 - **Docs:** https://docs.anthropic.com/

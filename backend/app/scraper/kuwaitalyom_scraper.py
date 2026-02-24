@@ -1109,7 +1109,7 @@ STRUCTURED TEXT:"""
     
     def _extract_text_from_image(self, image_bytes: bytes) -> Optional[dict]:
         """
-        Extract text from image using Claude Sonnet 4.5 Vision
+        Extract text from image using Claude Sonnet 4.6 Vision
         
         Claude Vision excels at complex newspaper layouts and provides:
         - Accurate OCR of Arabic text
@@ -1126,8 +1126,8 @@ STRUCTURED TEXT:"""
         try:
             import os
 
-            # Claude Sonnet 4.5 Vision OCR (Primary - works perfectly for complex newspaper layouts)
-            print(f"  🧠 Using Claude Sonnet 4.5 Vision for OCR and extraction...")
+            # Claude Sonnet 4.6 Vision OCR (Primary - works perfectly for complex newspaper layouts)
+            print(f"  🧠 Using Claude Sonnet 4.6 Vision for OCR and extraction...")
             
             claude_api_key = os.getenv('ANTHROPIC_API_KEY')
             if not claude_api_key or claude_api_key == 'your-claude-api-key-here':
@@ -1429,7 +1429,7 @@ STRUCTURED TEXT:"""
         """
         Extract text from a specific page in the Kuwait Alyom gazette
         
-        Uses Claude Sonnet 4.5 Vision for text extraction.
+        Uses Claude Sonnet 4.6 Vision for text extraction.
         Tries screenshot first, then PDF-based extraction.
         
         Args:

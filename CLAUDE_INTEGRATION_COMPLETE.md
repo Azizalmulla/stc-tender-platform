@@ -1,7 +1,7 @@
-# Claude Sonnet 4.5 Integration - Complete ✅
+# Claude Sonnet 4.6 Integration - Complete ✅
 
 ## Summary
-Successfully integrated Claude Sonnet 4.5 as the **primary OCR and extraction engine**, replacing the Google Document AI + GPT-4o pipeline.
+Successfully integrated Claude Sonnet 4.6 as the **primary OCR and extraction engine**, replacing the Google Document AI + GPT-4o pipeline.
 
 ---
 
@@ -9,7 +9,7 @@ Successfully integrated Claude Sonnet 4.5 as the **primary OCR and extraction en
 
 ### ✅ **Primary Path (When ANTHROPIC_API_KEY is configured):**
 ```
-Screenshot → Claude Sonnet 4.5 Vision → Clean Structured Text
+Screenshot → Claude Sonnet 4.6 Vision → Clean Structured Text
            (Single API call - OCR + Extraction + Structuring)
 ```
 
@@ -44,14 +44,14 @@ Screenshot → Google Document AI → GPT-4o Vision → GPT-4o Text
 
 ### 1. **`backend/requirements.txt`**
 ```python
-anthropic==0.39.0  # Claude Sonnet 4.5 for OCR
+anthropic==0.39.0  # Claude Sonnet 4.6 for OCR
 ```
 
 ### 2. **`backend/app/core/config.py`**
 ```python
 # Anthropic Claude
 ANTHROPIC_API_KEY: Optional[str] = None
-CLAUDE_MODEL: str = "claude-sonnet-4.5-20250929"  # Latest Claude Sonnet 4.5
+CLAUDE_MODEL: str = "claude-sonnet-4-6"  # Latest Claude Sonnet 4.6
 ```
 
 ### 3. **`backend/app/ai/claude_service.py`** (NEW)
@@ -114,7 +114,7 @@ DOCUMENTAI_PROCESSOR_NAME=...  # Fallback OCR
 ## Expected Improvements
 
 ### **vs Google Doc AI + GPT-4o:**
-- ✅ **Better OCR Quality** - Claude Sonnet 4.5 is "undisputed OCR champion"
+- ✅ **Better OCR Quality** - Claude Sonnet 4.6 is "undisputed OCR champion"
 - ✅ **Zero Gibberish** - Honest about illegible text (returns null + note)
 - ✅ **Better Context** - Sees image throughout, not just text
 - ✅ **Simpler Pipeline** - 1 API call instead of 3
@@ -130,7 +130,7 @@ Before (GPT-4o):
 - 20% messy text ⚠️
 - 10% gibberish ❌
 
-After (Claude Sonnet 4.5):
+After (Claude Sonnet 4.6):
 - 85-90% clean text ✅
 - 10-15% with minor issues ⚠️
 - 0-5% null (honest failure) ✅
@@ -156,7 +156,7 @@ curl -X POST https://stc-tender-platform.onrender.com/api/cron/scrape-weekly \
 ### **3. Check Logs:**
 ```
 Expected:
-🧠 Using Claude Sonnet 4.5 for OCR and extraction...
+🧠 Using Claude Sonnet 4.6 for OCR and extraction...
 ✅ Claude extracted 850 characters
 🏛️ Ministry: وزارة الأشغال العامة
 📊 Confidence: 0.9
@@ -206,7 +206,7 @@ Expected:
 
 ### **Per 500 Tenders:**
 ```
-Claude Sonnet 4.5 Only:
+Claude Sonnet 4.6 Only:
 - Input: 500 images × ~2000 tokens = 1M tokens × $3 = $3.00
 - Output: ~500K tokens × $15/M = $7.50
 - Total: $10.50 per 500 tenders
@@ -240,5 +240,5 @@ Result: Similar cost, MUCH better quality!
 ---
 
 Generated: November 19, 2025
-Model: Claude Sonnet 4.5 (claude-sonnet-4.5-20250929)
+Model: Claude Sonnet 4.6 (claude-sonnet-4-6)
 Integration: Complete ✅

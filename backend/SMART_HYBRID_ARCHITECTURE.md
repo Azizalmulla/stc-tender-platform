@@ -20,7 +20,7 @@ Screenshot
 └─────────────────────────────────────────────────┘
     ↓ If fails
 ┌─────────────────────────────────────────────────┐
-│  CLAUDE OCR (claude-sonnet-4-5)                 │  ← FALLBACK
+│  CLAUDE OCR (claude-sonnet-4-6)                 │  ← FALLBACK
 │  - Backup OCR method                            │
 │  - Cost: $0.003 per page                        │
 │  - Quality: Excellent                           │
@@ -29,7 +29,7 @@ Screenshot
   Extracted Text
     ↓
 ┌─────────────────────────────────────────────────┐
-│  CLAUDE REASONING (claude-sonnet-4-5)           │  ← PRIMARY
+│  CLAUDE REASONING (claude-sonnet-4-6)           │  ← PRIMARY
 │  - Summarize tender (bilingual)                 │
 │  - Extract structured data                      │
 │  - Cost: $0.02 per tender                       │
@@ -241,7 +241,7 @@ if not extracted and mistral_service:
   ✅ Mistral OCR extracted 3216 characters
   🏛️ Ministry: شركة نفط الكويت
 
-  🧠 Using Claude Sonnet 4.5 for summarization and extraction (primary)...
+  🧠 Using Claude Sonnet 4.6 for summarization and extraction (primary)...
   ✅ Claude AI processing successful
 
 ✅ Saved tender: 2026/2025/64 (ID: 1)
@@ -251,13 +251,13 @@ if not extracted and mistral_service:
 ```
   🚀 Using Mistral OCR for text extraction (primary)...
   ⚠️  Mistral OCR failed: ..., trying Claude fallback...
-  🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)...
+  🧠 Using Claude Sonnet 4.6 for OCR and extraction (fallback)...
   ✅ Claude extracted 3104 characters
 ```
 
 ### **Claude Reasoning Fails (very rare):**
 ```
-  🧠 Using Claude Sonnet 4.5 for summarization and extraction (primary)...
+  🧠 Using Claude Sonnet 4.6 for summarization and extraction (primary)...
   ⚠️  Claude failed: ..., falling back to Mistral...
   🚀 Using Mistral Large for summarization and extraction (fallback)...
   ✅ Mistral AI processing successful

@@ -41,7 +41,7 @@ pyarabic==0.6.15
 
 # AI & Embeddings
 # mistralai>=1.9.0  # DEPRECATED: Mistral OCR API doesn't handle complex newspaper layouts well (extracts headers/footers instead of content)
-anthropic>=0.74.0  # Claude Sonnet 4.5 Vision for OCR, summarization, extraction, and Q&A - works perfectly with complex layouts
+anthropic>=0.74.0  # Claude Sonnet 4.6 Vision for OCR, summarization, extraction, and Q&A - works perfectly with complex layouts
 voyageai>=0.2.0  # Voyage AI for embeddings (voyage-law-2 optimized for legal documents)
 
 # Date Processing

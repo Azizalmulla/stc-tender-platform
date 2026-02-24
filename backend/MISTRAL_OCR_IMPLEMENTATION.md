@@ -10,7 +10,7 @@ Implemented a **tiered OCR system** with Mistral OCR as primary and Claude as fa
 
 ### OCR Flow
 ```
-Screenshot → Mistral OCR (Primary) → Claude Sonnet 4.5 (Fallback) → Google Doc AI (Last Resort)
+Screenshot → Mistral OCR (Primary) → Claude Sonnet 4.6 (Fallback) → Google Doc AI (Last Resort)
              ↓ Success                 ↓ Success                      ↓ Success
          Extract Text              Extract Text                   Extract Text
              ↓                          ↓                              ↓
@@ -22,7 +22,7 @@ Screenshot → Mistral OCR (Primary) → Claude Sonnet 4.5 (Fallback) → Google
 ### Why This Approach?
 
 1. **Mistral OCR** = Dedicated OCR model (fast, cheap, reliable)
-2. **Claude Sonnet 4.5** = Premium quality with structured extraction
+2. **Claude Sonnet 4.6** = Premium quality with structured extraction
 3. **Google Doc AI** = Last resort for backward compatibility
 
 ---
@@ -75,7 +75,7 @@ class MistralOCRService:
 def _extract_text_from_image(image_bytes):
     1. Try Mistral OCR first
        - If success + text > 50 chars → Return
-    2. Try Claude Sonnet 4.5
+    2. Try Claude Sonnet 4.6
        - If success → Return (with structured data)
     3. Fallback to old Google Doc AI method
 ```
@@ -156,7 +156,7 @@ git push origin main
 🖼️  Using screenshot-based extraction...
   🚀 Using Mistral OCR for text extraction (primary)...
   ⚠️  Mistral OCR failed: 529 Overloaded, trying Claude fallback...
-  🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)...
+  🧠 Using Claude Sonnet 4.6 for OCR and extraction (fallback)...
   ✅ Claude extracted 3104 characters
   🏛️ Ministry: وزارة المالية
   📊 Confidence: 0.75
@@ -181,9 +181,9 @@ git push origin main
 
 ## API Comparison
 
-| Feature | Mistral OCR | Claude Sonnet 4.5 |
+| Feature | Mistral OCR | Claude Sonnet 4.6 |
 |---------|------------|-------------------|
-| **Model** | `mistral-ocr-latest` | `claude-sonnet-4-5-20250929` |
+| **Model** | `mistral-ocr-latest` | `claude-sonnet-4-6` |
 | **Cost** | $1 per 1000 pages | ~$3 per 1000 pages |
 | **Speed** | 2000 pages/min | ~100 pages/min |
 | **Arabic** | ⭐⭐⭐⭐⭐ Native | ⭐⭐⭐⭐⭐ Excellent |

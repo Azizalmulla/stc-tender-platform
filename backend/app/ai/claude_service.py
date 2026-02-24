@@ -1,5 +1,5 @@
 """
-Claude Sonnet 4.5 Service for OCR and Document Extraction
+Claude Sonnet 4.6 Service for OCR and Document Extraction
 Replaces Google Document AI + GPT pipeline with single Claude call
 """
 import base64
@@ -12,7 +12,7 @@ import time
 
 
 class ClaudeOCRService:
-    """Claude Sonnet 4.5 for OCR, extraction, and structuring"""
+    """Claude Sonnet 4.6 for OCR, extraction, and structuring"""
     
     def __init__(self):
         if not settings.ANTHROPIC_API_KEY:
@@ -59,7 +59,7 @@ class ClaudeOCRService:
         image_format: str = "png"
     ) -> Dict[str, Any]:
         """
-        Extract all tender information from screenshot using Claude Sonnet 4.5
+        Extract all tender information from screenshot using Claude Sonnet 4.6
         
         Args:
             image_bytes: Screenshot image bytes
@@ -86,7 +86,7 @@ class ClaudeOCRService:
             prompt = self._construct_extraction_prompt()
             
             # Call Claude Vision API with retry for overload
-            print(f"🧠 Claude Sonnet 4.5: Analyzing tender document...")
+            print(f"🧠 Claude Sonnet 4.6: Analyzing tender document...")
             
             messages = [
                 {
@@ -660,7 +660,7 @@ Return ONLY the JSON, no explanation."""
         metadata: Dict = None
     ) -> Dict:
         """
-        Answer questions about tenders using Claude Sonnet 4.5 with RAG
+        Answer questions about tenders using Claude Sonnet 4.6 with RAG
         
         Args:
             question: User question in Arabic or English

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     
     # Anthropic Claude (for OCR, summarization, and structured extraction)
     ANTHROPIC_API_KEY: Optional[str] = None
-    CLAUDE_MODEL: str = "claude-sonnet-4-5-20250929"  # Latest Claude Sonnet 4.5 (correct name)
+    CLAUDE_MODEL: str = "claude-sonnet-4-6"  # Latest Claude Sonnet 4.6
     
     # Voyage AI (for embeddings - voyage-law-2 optimized for legal documents)
     VOYAGE_API_KEY: Optional[str] = None

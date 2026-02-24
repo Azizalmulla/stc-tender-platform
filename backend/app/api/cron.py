@@ -12,7 +12,7 @@ from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
 from app.models.tender import Tender, TenderEmbedding
 from app.ai.voyage_service import voyage_service  # Voyage AI for embeddings (voyage-law-2)
-from app.ai.claude_service import claude_service  # Claude Sonnet 4.5 for all AI tasks
+from app.ai.claude_service import claude_service  # Claude Sonnet 4.6 for all AI tasks
 from app.parser.pdf_parser import TextNormalizer
 from app.utils.date_validator import date_validator  # Extreme date accuracy
 
@@ -319,7 +319,7 @@ Text:
 {extract_text[:3000]}"""
 
                 extract_response = claude_service.client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=settings.CLAUDE_MODEL,
                     max_tokens=100,
                     messages=[{"role": "user", "content": extract_prompt}]
                 )
@@ -843,7 +843,7 @@ Text:
 {text[:3000]}"""
 
                 response = claude_service.client.messages.create(
-                    model="claude-sonnet-4-20250514",
+                    model=settings.CLAUDE_MODEL,
                     max_tokens=100,
                     messages=[{"role": "user", "content": prompt}]
                 )

@@ -64,7 +64,7 @@
   - "🚀 Using Mistral OCR for text extraction (primary)..."
   - "✅ Mistral OCR extracted X characters"
   - "⚠️ Mistral OCR failed: ..., trying Claude fallback..."
-  - "🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)..."
+  - "🧠 Using Claude Sonnet 4.6 for OCR and extraction (fallback)..."
 
 ---
 
@@ -110,7 +110,7 @@ Look for these log patterns:
 ✅ Success (Claude fallback):
   🚀 Using Mistral OCR for text extraction (primary)...
   ⚠️ Mistral OCR failed: ..., trying Claude fallback...
-  🧠 Using Claude Sonnet 4.5 for OCR and extraction (fallback)...
+  🧠 Using Claude Sonnet 4.6 for OCR and extraction (fallback)...
   ✅ Claude extracted 3104 characters
 
 ❌ Error (investigate):

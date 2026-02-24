@@ -201,7 +201,7 @@ Rules:
             Dict with answer_ar, answer_en, citations, confidence
         """
         # Build context from documents
-        # Note: With Claude Sonnet 4.5 OCR, text is now clean - no sanitization needed
+        # Note: With Claude Sonnet 4.6 OCR, text is now clean - no sanitization needed
         context = "\n\n---\n\n".join([
             f"Tender Number: {doc.get('tender_number', 'N/A')}\n"
             f"Title: {doc['title']}\n"
