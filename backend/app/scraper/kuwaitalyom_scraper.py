@@ -1271,25 +1271,16 @@ STRUCTURED TEXT:"""
                 # Step 2: Remove all whitespace and invalid characters
                 normalized_data = re.sub(r'[^A-Za-z0-9+/=]', '', normalized_data)
                 
-                # Step 3: Strip existing padding (we'll recalculate)
-                normalized_data = normalized_data.rstrip('=')
-                
-                # Step 4: Add correct padding (base64 requires length to be multiple of 4)
+                # Step 3: Strip all padding and recalculate cleanly
+                normalized_data = normalized_data.replace('=', '')
                 missing_padding = len(normalized_data) % 4
                 if missing_padding:
                     normalized_data += '=' * (4 - missing_padding)
-                    print(f"   - Added {4 - missing_padding} padding characters")
-                
-                print(f"   - Normalized length: {len(normalized_data)} (should be multiple of 4: {len(normalized_data) % 4 == 0})")
-                
-                # Step 5: Validate base64 string before decoding
-                if not re.match(r'^[A-Za-z0-9+/]*={0,2}$', normalized_data):
-                    print(f"❌ Invalid base64 characters detected after normalization")
-                    print(f"   - Last 100 chars: {normalized_data[-100:]}")
-                    return None
-                
-                # Step 6: Decode with validation
-                pdf_bytes = base64.b64decode(normalized_data, validate=True)
+
+                print(f"   - Normalized length: {len(normalized_data)} (multiple of 4: {len(normalized_data) % 4 == 0})")
+
+                # Step 4: Decode
+                pdf_bytes = base64.b64decode(normalized_data)
                 
                 print(f"✅ Decoded successfully!")
                 print(f"   - Decoded size: {len(pdf_bytes) / 1024 / 1024:.1f}MB")
