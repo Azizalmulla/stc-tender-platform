@@ -19,7 +19,7 @@ from app.utils.date_validator import date_validator  # Extreme date accuracy
 router = APIRouter(prefix="/cron", tags=["cron"])
 
 
-def run_scrape_task(days_back: int = 14):
+def run_scrape_task(days_back: int = 7):
     """
     Background task to run the scrape without blocking HTTP requests.
     Uses INCREMENTAL processing to stay within 512MB memory limit.
