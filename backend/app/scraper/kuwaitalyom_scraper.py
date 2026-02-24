@@ -117,9 +117,10 @@ class KuwaitAlyomScraper:
             print("🔐 Logging in to Kuwait Al-Yawm...")  # Using print() to ensure visibility
             logger.info("🔐 Logging in to Kuwait Al-Yawm...")
             
-            # Get login page to retrieve tokens
-            login_page_url = f"{self.base_url}/Account/LoginOnline"
-            response = self.session.get(login_page_url)
+            # Get login page to retrieve CSRF token (GET), then POST to LoginOnline
+            login_get_url = f"{self.base_url}/Account/Login"
+            login_post_url = f"{self.base_url}/Account/LoginOnline"
+            response = self.session.get(login_get_url)
             response.raise_for_status()
             
             # Parse anti-forgery token
@@ -141,7 +142,7 @@ class KuwaitAlyomScraper:
             }
             
             login_response = self.session.post(
-                login_page_url,
+                login_post_url,
                 data=login_data,
                 allow_redirects=True
             )
