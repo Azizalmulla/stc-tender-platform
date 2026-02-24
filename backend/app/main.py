@@ -1,8 +1,32 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from app.core.config import settings
 from app.api import tenders, search, chat, cron, notifications, meetings, export, analytics
+
+
+scheduler = BackgroundScheduler(timezone="UTC")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start scheduler on app startup
+    from app.api.cron import run_scrape_task
+    scheduler.add_job(
+        run_scrape_task,
+        CronTrigger(day_of_week="sun", hour=6, minute=0),  # Every Sunday 6am UTC = 9am Kuwait
+        id="weekly_scrape",
+        replace_existing=True,
+    )
+    scheduler.start()
+    print("✅ Weekly scrape scheduler started (every Sunday 9am Kuwait time)")
+    yield
+    # Shutdown scheduler on app shutdown
+    scheduler.shutdown(wait=False)
+    print("🛑 Scheduler stopped")
 
 
 class ProxyHeadersMiddleware(BaseHTTPMiddleware):
@@ -21,7 +45,8 @@ app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
     docs_url="/api/docs",
-    redoc_url="/api/redoc"
+    redoc_url="/api/redoc",
+    lifespan=lifespan,
 )
 
 # Add proxy headers middleware FIRST (before CORS)

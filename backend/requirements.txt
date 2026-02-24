@@ -61,6 +61,7 @@ tenacity==9.0.0
 redis==5.0.1
 rq==1.16.2
 rq-scheduler==0.13.1  # Retry logic with exponential backoff (industry standard)
+apscheduler==3.10.4  # In-process scheduler for weekly scrape cron
 
 # Monitoring
 sentry-sdk[fastapi]==1.40.0
