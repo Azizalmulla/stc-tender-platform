@@ -3,6 +3,10 @@ Kuwait Al-Yawm (Official Gazette) Scraper
 Scrapes tender announcements from the official government gazette
 """
 import requests
+import socket
+from urllib3.util.connection import allowed_gai_family
+from requests.adapters import HTTPAdapter
+from urllib3.poolmanager import PoolManager
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta
 import hashlib
@@ -20,6 +24,22 @@ import cv2
 from app.ai.claude_service import claude_service
 
 logger = logging.getLogger(__name__)
+
+
+class IPv4Adapter(HTTPAdapter):
+    """Force IPv4 connections — Kuwait Alyom blocks IPv6 from non-KW servers"""
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs['socket_options'] = []
+        self.poolmanager = PoolManager(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        old_family = allowed_gai_family()
+        try:
+            import urllib3.util.connection as conn
+            conn._HAS_IPV6 = False
+            return super().send(request, **kwargs)
+        finally:
+            conn._HAS_IPV6 = old_family == socket.AF_INET6
 
 
 def preprocess_image_for_ocr(image_bytes: bytes) -> bytes:
@@ -98,6 +118,9 @@ class KuwaitAlyomScraper:
         })
         # Disable SSL verification for production environment (Kuwait Alyom certificate issues)
         self.session.verify = False
+        # Force IPv4 — Kuwait Alyom CDN blocks IPv6 from non-KW servers (VPS uses IPv6 by default)
+        self.session.mount('https://', IPv4Adapter())
+        self.session.mount('http://', IPv4Adapter())
         # Suppress SSL warnings
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -117,10 +140,9 @@ class KuwaitAlyomScraper:
             print("🔐 Logging in to Kuwait Al-Yawm...")  # Using print() to ensure visibility
             logger.info("🔐 Logging in to Kuwait Al-Yawm...")
             
-            # Get login page to retrieve CSRF token (GET), then POST to LoginOnline
-            login_get_url = f"{self.base_url}/Account/Login"
-            login_post_url = f"{self.base_url}/Account/LoginOnline"
-            response = self.session.get(login_get_url)
+            # Get login page to retrieve CSRF token, then POST to same URL
+            login_page_url = f"{self.base_url}/Account/Login"
+            response = self.session.get(login_page_url)
             response.raise_for_status()
             
             # Parse anti-forgery token
@@ -142,7 +164,7 @@ class KuwaitAlyomScraper:
             }
             
             login_response = self.session.post(
-                login_post_url,
+                login_page_url,
                 data=login_data,
                 allow_redirects=True
             )
