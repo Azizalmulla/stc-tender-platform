@@ -205,6 +205,36 @@ async def reset_master_workbook(db: Session = Depends(get_db)):
     return {"status": "reset", "message": "Master workbook deleted and all tender export flags cleared"}
 
 
+@router.get("/tenders")
+async def export_tenders_generic(
+    days_back: int = 7,
+    category: str = None,
+    sector: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Export recent tech tenders to a clean generic Excel file.
+
+    Args:
+        days_back: How many days back to include (default 7)
+        category: Optional filter (tenders/auctions/practices)
+        sector: Optional filter by sector tag
+    """
+    from app.export.generic_export_service import GenericTenderExporter
+    exporter = GenericTenderExporter(db)
+    excel_bytes = exporter.generate_excel(days_back=days_back, category=category, sector=sector)
+    from datetime import datetime
+    filename = f"Kuwait_Tech_Tenders_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+    )
+
+
 @router.get("/reference-lists")
 async def get_reference_lists():
     """
