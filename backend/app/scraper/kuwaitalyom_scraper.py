@@ -4,8 +4,6 @@ Scrapes tender announcements from the official government gazette
 """
 import requests
 import socket
-from requests.adapters import HTTPAdapter
-from urllib3.poolmanager import PoolManager
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta
 import hashlib
@@ -25,15 +23,12 @@ from app.ai.claude_service import claude_service
 logger = logging.getLogger(__name__)
 
 
-class IPv4Adapter(HTTPAdapter):
-    """Force IPv4 connections — Kuwait Alyom CDN blocks IPv6 from non-KW servers"""
-    def init_poolmanager(self, num_pools, maxsize, block=False, **kwargs):
-        self.poolmanager = PoolManager(
-            num_pools=num_pools,
-            maxsize=maxsize,
-            block=block,
-            socket_family=socket.AF_INET,
-        )
+def _force_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Force IPv4 DNS resolution — Kuwait Alyom CDN blocks IPv6 from non-KW servers"""
+    return _original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+
+_original_getaddrinfo = socket.getaddrinfo
+socket.getaddrinfo = _force_ipv4_getaddrinfo
 
 
 def preprocess_image_for_ocr(image_bytes: bytes) -> bytes:
@@ -112,9 +107,7 @@ class KuwaitAlyomScraper:
         })
         # Disable SSL verification for production environment (Kuwait Alyom certificate issues)
         self.session.verify = False
-        # Force IPv4 — Kuwait Alyom CDN blocks IPv6 from non-KW servers (VPS uses IPv6 by default)
-        self.session.mount('https://', IPv4Adapter())
-        self.session.mount('http://', IPv4Adapter())
+        # IPv4 is forced globally via socket.getaddrinfo monkey-patch above
         # Suppress SSL warnings
         import urllib3
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
