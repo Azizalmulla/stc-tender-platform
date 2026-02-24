@@ -1180,6 +1180,44 @@ STRUCTURED TEXT:"""
             print(traceback.format_exc())
             return None
     
+    def _screenshot_page_with_playwright(self, edition_id: str, page_number: int) -> Optional[bytes]:
+        """
+        Screenshot a flipbook page using Playwright (free Browserless alternative).
+        Kuwait Alyom serves PDFs in a proprietary encrypted format that can only be
+        rendered by the flipbook's JavaScript — Playwright lets the JS run and captures the result.
+        """
+        try:
+            from playwright.sync_api import sync_playwright
+
+            print(f"📸 Playwright screenshot: Edition {edition_id}, Page {page_number}...")
+
+            # Transfer session cookies to Playwright context
+            cookies = [
+                {"name": c.name, "value": c.value, "domain": "kuwaitalyawm.media.gov.kw", "path": "/"}
+                for c in self.session.cookies
+            ]
+
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context(ignore_https_errors=True)
+                if cookies:
+                    context.add_cookies(cookies)
+
+                page = context.new_page()
+                url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+                page.goto(url, timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=15000)
+
+                screenshot_bytes = page.screenshot(full_page=False)
+                browser.close()
+
+            print(f"✅ Playwright screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
+            return screenshot_bytes
+
+        except Exception as e:
+            print(f"⚠️  Playwright screenshot failed: {e}")
+            return None
+
     def _download_magazine_pdf(self, edition_id: str) -> Optional[bytes]:
         """
         Download the full magazine PDF for an edition (cached per edition)
@@ -1454,21 +1492,16 @@ STRUCTURED TEXT:"""
                 else:
                     print(f"⚠️  Screenshot extraction returned minimal text (< 20 chars), trying PDF OCR...")
             
-            # Method 2: PDF-based extraction (if screenshot failed)
-            print(f"📄 Trying PDF-based extraction...")
-            magazine_pdf = self._download_magazine_pdf(edition_id)
-            if not magazine_pdf:
-                return None
-            
-            # Extract image from PDF and use Claude Vision
-            print(f"  🖼️  Extracting image from PDF for Claude OCR...")
-            image_bytes = self._extract_high_res_image_from_pdf(magazine_pdf, page_number)
-            if image_bytes:
-                result = self._extract_text_from_image(image_bytes)
+            # Method 2: Playwright screenshot (Kuwait Alyom uses proprietary encrypted PDF format
+            # that only the flipbook JS can render — Playwright lets JS run and captures the result)
+            print(f"� Trying Playwright screenshot...")
+            screenshot_bytes = self._screenshot_page_with_playwright(edition_id, page_number)
+            if screenshot_bytes:
+                result = self._extract_text_from_image(screenshot_bytes)
                 if result and result.get('text') and len(result['text']) > 20:
-                    print(f"✅ Extracted {len(result['text'])} characters via Claude OCR")
+                    print(f"✅ Extracted {len(result['text'])} characters via Playwright+Claude OCR")
                     return result
-            
+
             print(f"⚠️  All OCR methods returned minimal or no text")
             return None
                 
