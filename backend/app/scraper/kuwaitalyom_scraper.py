@@ -4,7 +4,6 @@ Scrapes tender announcements from the official government gazette
 """
 import requests
 import socket
-from urllib3.util.connection import allowed_gai_family
 from requests.adapters import HTTPAdapter
 from urllib3.poolmanager import PoolManager
 from bs4 import BeautifulSoup
@@ -27,19 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 class IPv4Adapter(HTTPAdapter):
-    """Force IPv4 connections — Kuwait Alyom blocks IPv6 from non-KW servers"""
+    """Force IPv4 connections — Kuwait Alyom CDN blocks IPv6 from non-KW servers"""
     def init_poolmanager(self, *args, **kwargs):
-        kwargs['socket_options'] = []
-        self.poolmanager = PoolManager(*args, **kwargs)
-
-    def send(self, request, **kwargs):
-        old_family = allowed_gai_family()
-        try:
-            import urllib3.util.connection as conn
-            conn._HAS_IPV6 = False
-            return super().send(request, **kwargs)
-        finally:
-            conn._HAS_IPV6 = old_family == socket.AF_INET6
+        kwargs['socket_options'] = HTTPAdapter.DEFAULT_POOLBLOCK
+        self.poolmanager = PoolManager(
+            *args,
+            socket_family=socket.AF_INET,
+            **{k: v for k, v in kwargs.items() if k != 'socket_options'}
+        )
 
 
 def preprocess_image_for_ocr(image_bytes: bytes) -> bytes:
