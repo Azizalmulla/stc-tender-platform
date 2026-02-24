@@ -115,6 +115,9 @@ class KuwaitAlyomScraper:
         self.is_authenticated = False
         self.pdf_extractor = PDFExtractor()  # Initialize PDF extractor with OCR
         self._magazine_cache = {}  # Cache full magazine PDFs by edition_id
+        self._playwright = None  # Reusable Playwright instance
+        self._pw_browser = None  # Reusable browser instance
+        self._pw_context = None  # Reusable browser context
         
     def login(self) -> bool:
         """
@@ -1180,42 +1183,58 @@ STRUCTURED TEXT:"""
             print(traceback.format_exc())
             return None
     
+    def _get_playwright_context(self):
+        """Get or create a reusable Playwright browser context (one browser for entire scrape)"""
+        from playwright.sync_api import sync_playwright
+        if self._playwright is None:
+            self._playwright = sync_playwright().start()
+            self._pw_browser = self._playwright.chromium.launch(headless=True)
+            cookies = [
+                {"name": c.name, "value": c.value, "domain": "kuwaitalyawm.media.gov.kw", "path": "/"}
+                for c in self.session.cookies
+            ]
+            self._pw_context = self._pw_browser.new_context(ignore_https_errors=True)
+            if cookies:
+                self._pw_context.add_cookies(cookies)
+            print("🌐 Playwright browser started (reused across all screenshots)")
+        return self._pw_context
+
+    def close_playwright(self):
+        """Clean up Playwright resources after scraping"""
+        try:
+            if self._pw_browser:
+                self._pw_browser.close()
+            if self._playwright:
+                self._playwright.stop()
+        except Exception:
+            pass
+        self._playwright = None
+        self._pw_browser = None
+        self._pw_context = None
+
     def _screenshot_page_with_playwright(self, edition_id: str, page_number: int) -> Optional[bytes]:
         """
         Screenshot a flipbook page using Playwright (free Browserless alternative).
         Kuwait Alyom serves PDFs in a proprietary encrypted format that can only be
         rendered by the flipbook's JavaScript — Playwright lets the JS run and captures the result.
+        Reuses a single browser instance across all tenders for speed.
         """
         try:
-            from playwright.sync_api import sync_playwright
-
             print(f"📸 Playwright screenshot: Edition {edition_id}, Page {page_number}...")
-
-            # Transfer session cookies to Playwright context
-            cookies = [
-                {"name": c.name, "value": c.value, "domain": "kuwaitalyawm.media.gov.kw", "path": "/"}
-                for c in self.session.cookies
-            ]
-
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(ignore_https_errors=True)
-                if cookies:
-                    context.add_cookies(cookies)
-
-                page = context.new_page()
-                url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
-                page.goto(url, timeout=30000)
-                page.wait_for_load_state("networkidle", timeout=15000)
-
-                screenshot_bytes = page.screenshot(full_page=False)
-                browser.close()
-
+            context = self._get_playwright_context()
+            page = context.new_page()
+            url = f"{self.base_url}/flip/index?id={edition_id}&no={page_number}"
+            page.goto(url, timeout=30000)
+            page.wait_for_load_state("networkidle", timeout=15000)
+            screenshot_bytes = page.screenshot(full_page=False)
+            page.close()
             print(f"✅ Playwright screenshot captured ({len(screenshot_bytes) / 1024:.1f}KB)")
             return screenshot_bytes
 
         except Exception as e:
             print(f"⚠️  Playwright screenshot failed: {e}")
+            # Reset browser on failure so next call gets a fresh one
+            self.close_playwright()
             return None
 
     def _download_magazine_pdf(self, edition_id: str) -> Optional[bytes]:
