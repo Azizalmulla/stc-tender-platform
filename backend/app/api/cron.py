@@ -968,6 +968,14 @@ def run_re_enrich_task(limit: int = 50, body_threshold: int = 100):
             return {"status": "error", "message": "Missing scraper credentials"}
         
         scraper = KuwaitAlyomScraper(username=username, password=password)
+        
+        # Login to get session cookies (required for Playwright flipbook access)
+        if not scraper.login():
+            print("❌ Failed to login to Kuwait Alyom — cannot re-enrich")
+            db.close()
+            return {"status": "error", "message": "Login to Kuwait Alyom failed"}
+        print("✅ Logged in to Kuwait Alyom")
+        
         normalizer = TextNormalizer()
         
         success_count = 0
