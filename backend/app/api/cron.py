@@ -4,7 +4,9 @@ Cron job endpoints for scheduled tasks
 from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from datetime import datetime
 import asyncio
+import re
 from typing import Optional
+from urllib.parse import urlparse, parse_qs
 
 from app.core.config import settings
 from app.core.cache import cache_manager  # For clearing cached responses
@@ -898,3 +900,328 @@ Text:
     except Exception as e:
         print(f"❌ Error extracting tender data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _parse_edition_page_from_url(url: str) -> tuple:
+    """Extract edition_id and page_number from a Kuwait Alyom tender URL.
+    
+    URL format: https://kuwaitalyawm.media.gov.kw/flip/index?id=3734&no=212#tender-140201
+    Returns (edition_id, page_number) or (None, None) if unparseable.
+    """
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        edition_id = params.get('id', [None])[0]
+        page_number = params.get('no', [None])[0]
+        if edition_id and page_number:
+            return str(edition_id), int(page_number)
+    except Exception:
+        pass
+    return None, None
+
+
+def run_re_enrich_task(limit: int = 50, body_threshold: int = 100):
+    """
+    Background task to re-enrich tenders that failed AI processing.
+    
+    Detects tenders with body < body_threshold chars (empty shells from
+    failed Claude API calls), re-fetches their PDF pages, and runs the
+    full OCR + AI pipeline to populate all fields.
+    
+    Args:
+        limit: Max number of tenders to re-process per run
+        body_threshold: Tenders with body shorter than this are considered unenriched
+    """
+    import gc
+    import json
+    from sqlalchemy import func as sql_func
+    
+    print(f"\n{'='*60}")
+    print(f"🔄 RE-ENRICHMENT: Fixing tenders with failed AI processing")
+    print(f"   Threshold: body < {body_threshold} chars")
+    print(f"   Limit: {limit} tenders per run")
+    print(f"{'='*60}")
+    
+    db = SessionLocal()
+    try:
+        # Find unenriched tenders: body is short AND missing ministry
+        unenriched = db.query(Tender).filter(
+            sql_func.length(Tender.body) < body_threshold,
+            Tender.ministry.is_(None)
+        ).order_by(
+            Tender.created_at.desc()
+        ).limit(limit).all()
+        
+        if not unenriched:
+            print("✅ No unenriched tenders found — all good!")
+            db.close()
+            return {"status": "no_work", "re_enriched": 0, "failed": 0, "total_found": 0}
+        
+        print(f"📊 Found {len(unenriched)} unenriched tenders to re-process")
+        
+        # Initialize scraper and normalizer
+        username = settings.KUWAIT_ALYOM_USERNAME
+        password = settings.KUWAIT_ALYOM_PASSWORD
+        if not username or not password:
+            print("❌ Kuwait Alyom credentials not configured")
+            db.close()
+            return {"status": "error", "message": "Missing scraper credentials"}
+        
+        scraper = KuwaitAlyomScraper(username=username, password=password)
+        normalizer = TextNormalizer()
+        
+        success_count = 0
+        fail_count = 0
+        
+        for i, tender in enumerate(unenriched, 1):
+            try:
+                print(f"\n  📄 [{i}/{len(unenriched)}] Re-enriching ID={tender.id}: {tender.title}")
+                
+                # Step 1: Extract edition_id and page_number from URL
+                edition_id, page_number = _parse_edition_page_from_url(tender.url or '')
+                if not edition_id or not page_number:
+                    print(f"    ❌ Cannot parse edition/page from URL: {tender.url}")
+                    fail_count += 1
+                    continue
+                
+                print(f"    📖 Edition {edition_id}, Page {page_number}")
+                
+                # Step 2: Re-fetch PDF page and run OCR
+                ocr_result = scraper.extract_pdf_text(edition_id, page_number)
+                if not ocr_result or not ocr_result.get('text') or len(ocr_result['text']) < 20:
+                    print(f"    ❌ OCR failed or returned minimal text")
+                    fail_count += 1
+                    continue
+                
+                pdf_text = ocr_result['text']
+                ocr_ministry = ocr_result.get('ministry')
+                print(f"    ✅ OCR extracted {len(pdf_text)} chars")
+                
+                # Step 3: Prepare text for AI processing
+                description = tender.title or ''
+                full_text = f"{description}\n\n{pdf_text[:50000]}"
+                body_text = pdf_text[:100000]
+                
+                text = f"{description}\n{full_text}"
+                text = normalizer.normalize_arabic(text)
+                
+                # Step 4: Claude AI structured extraction + summarization
+                print(f"    🧠 Claude AI processing...")
+                try:
+                    extracted = claude_service.extract_structured_data(text)
+                    summary_data = claude_service.summarize_tender(
+                        description,
+                        full_text,
+                        tender.lang or 'ar'
+                    )
+                except Exception as e:
+                    print(f"    ❌ Claude failed: {e}")
+                    fail_count += 1
+                    continue
+                
+                if not extracted or not summary_data:
+                    print(f"    ❌ No AI extraction returned")
+                    fail_count += 1
+                    continue
+                
+                # Step 5: Parse deadline
+                new_deadline = extracted.get('deadline')
+                if new_deadline and isinstance(new_deadline, str):
+                    try:
+                        new_deadline = datetime.fromisoformat(new_deadline.replace('Z', '+00:00'))
+                    except Exception:
+                        new_deadline = None
+                
+                # Date validation
+                date_validation_result = date_validator.validate_deadline(
+                    new_deadline,
+                    tender.published_at
+                )
+                if date_validation_result and not date_validation_result.get('valid'):
+                    for suggestion in date_validation_result.get('suggestions', []):
+                        if suggestion.get('confidence', 0) >= 0.80 and suggestion.get('suggested'):
+                            try:
+                                from datetime import timezone
+                                new_deadline = datetime.fromisoformat(suggestion['suggested'])
+                                if new_deadline.tzinfo is None:
+                                    new_deadline = new_deadline.replace(tzinfo=timezone.utc)
+                                print(f"    📅 Date corrected")
+                                break
+                            except Exception:
+                                pass
+                
+                # Step 6: Get ministry
+                ministry = extracted.get('ministry') or ocr_ministry
+                if ministry and isinstance(ministry, str):
+                    ministry = ministry.strip().rstrip('",;')
+                
+                # Step 7: Generate Voyage embedding
+                embedding = voyage_service.generate_embedding(text, input_type="document")
+                
+                # Step 8: Update tender fields
+                tender.body = body_text
+                tender.ministry = ministry
+                tender.deadline = new_deadline
+                tender.summary_ar = summary_data.get('summary_ar', '') if tender.lang == 'ar' else summary_data.get('summary_ar', '')
+                tender.summary_en = summary_data.get('summary_en', '')
+                tender.facts_ar = summary_data.get('facts_ar', [])
+                tender.facts_en = summary_data.get('facts_en', [])
+                tender.tender_number = extracted.get('tender_number') or tender.tender_number
+                tender.meeting_date = ocr_result.get('meeting_date') if ocr_result.get('meeting_date') else tender.meeting_date
+                tender.meeting_location = ocr_result.get('meeting_location') if ocr_result.get('meeting_location') else tender.meeting_location
+                
+                # Step 9: Update or create embedding
+                existing_embedding = db.query(TenderEmbedding).filter(
+                    TenderEmbedding.tender_id == tender.id
+                ).first()
+                if existing_embedding:
+                    existing_embedding.embedding = embedding
+                else:
+                    db.add(TenderEmbedding(tender_id=tender.id, embedding=embedding))
+                
+                # Step 10: Extract value + sectors with Claude
+                try:
+                    extract_text = f"{tender.title or ''}\n{body_text or ''}\n{summary_data.get('summary_ar', '')}\n{summary_data.get('summary_en', '')}"
+                    if len(extract_text.strip()) >= 50:
+                        extract_prompt = f"""Analyze this government tender and extract:
+
+1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
+
+2. **sectors**: Which STC business sectors this tender is relevant to. Choose from ONLY these options:
+   - "telecom" (telecommunications, fiber, 5G, mobile networks)
+   - "datacenter" (data centers, cloud, servers, hosting)
+   - "callcenter" (call centers, contact centers, customer service, IVR)
+   - "network" (networking, security, firewalls, routers, switches)
+   - "smartcity" (smart city, IoT, sensors, automation)
+   
+   Return empty array [] if none match.
+
+Return ONLY valid JSON in this exact format:
+{{"value": 0, "sectors": []}}
+
+Text:
+{extract_text[:3000]}"""
+                        
+                        extract_response = claude_service.client.messages.create(
+                            model=settings.CLAUDE_MODEL,
+                            max_tokens=100,
+                            messages=[{"role": "user", "content": extract_prompt}]
+                        )
+                        extract_text_response = extract_response.content[0].text.strip()
+                        start = extract_text_response.find('{')
+                        end = extract_text_response.rfind('}') + 1
+                        if start >= 0 and end > start:
+                            extract_data = json.loads(extract_text_response[start:end])
+                            value = extract_data.get('value', 0)
+                            sectors = extract_data.get('sectors', [])
+                            if value and value > 0:
+                                tender.expected_value = float(value)
+                            if sectors:
+                                tender.ai_sectors = sectors
+                            print(f"    💰 Value: {value:,.0f} KD, Sectors: {sectors}")
+                except Exception as e:
+                    print(f"    ⚠️ Value/sector extraction failed: {e}")
+                
+                # Commit this tender
+                db.commit()
+                success_count += 1
+                print(f"    ✅ Re-enriched successfully! body={len(body_text)} chars, ministry={ministry}")
+                
+                # Clear memory
+                gc.collect()
+                
+            except Exception as e:
+                print(f"    ❌ Error re-enriching tender {tender.id}: {e}")
+                db.rollback()
+                fail_count += 1
+                gc.collect()
+                continue
+        
+        db.close()
+        
+        result = {
+            "status": "success",
+            "total_found": len(unenriched),
+            "re_enriched": success_count,
+            "failed": fail_count,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        print(f"\n{'='*60}")
+        print(f"✅ RE-ENRICHMENT COMPLETED!")
+        print(f"   Found: {len(unenriched)} unenriched tenders")
+        print(f"   Success: {success_count}")
+        print(f"   Failed: {fail_count}")
+        print(f"{'='*60}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ FATAL ERROR in re-enrichment: {e}")
+        import traceback
+        print(traceback.format_exc())
+        db.close()
+        raise
+
+
+@router.post("/re-enrich")
+async def re_enrich_tenders(
+    background_tasks: BackgroundTasks,
+    limit: int = 50,
+    body_threshold: int = 100,
+    dry_run: bool = False,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Re-enrich tenders that failed AI processing (e.g. due to Claude credit exhaustion).
+    
+    Detects tenders with body < body_threshold chars, re-fetches their PDF pages
+    from Kuwait Alyom, and runs the full OCR + AI pipeline to populate:
+    body, ministry, deadline, summaries, facts, embeddings, value, sectors.
+    
+    Args:
+        limit: Max tenders to process per run (default 50)
+        body_threshold: Tenders with body shorter than this are unenriched (default 100)
+        dry_run: If True, just count unenriched tenders without processing
+        authorization: Bearer token for auth
+    """
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    from sqlalchemy import func as sql_func
+    
+    # Count unenriched tenders
+    db = SessionLocal()
+    try:
+        unenriched_count = db.query(Tender).filter(
+            sql_func.length(Tender.body) < body_threshold,
+            Tender.ministry.is_(None)
+        ).count()
+    finally:
+        db.close()
+    
+    if unenriched_count == 0:
+        return {
+            "status": "no_work",
+            "message": "No unenriched tenders found — all tenders are fully processed",
+            "unenriched_count": 0
+        }
+    
+    if dry_run:
+        return {
+            "status": "dry_run",
+            "message": f"Found {unenriched_count} unenriched tenders (body < {body_threshold} chars, no ministry)",
+            "unenriched_count": unenriched_count,
+            "would_process": min(limit, unenriched_count)
+        }
+    
+    # Run in background
+    background_tasks.add_task(run_re_enrich_task, limit=limit, body_threshold=body_threshold)
+    
+    return {
+        "status": "started",
+        "message": f"Re-enrichment started for up to {min(limit, unenriched_count)} of {unenriched_count} unenriched tenders",
+        "unenriched_count": unenriched_count,
+        "processing": min(limit, unenriched_count)
+    }
