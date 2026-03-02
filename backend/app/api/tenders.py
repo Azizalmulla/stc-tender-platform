@@ -209,9 +209,9 @@ async def get_tenders(
     if filters:
         query = query.filter(and_(*filters))
     
-    # Order by published date (newest first)
-    # Use nulls_last for better compatibility
-    query = query.order_by(nullslast(Tender.published_at.desc()))
+    # Order by published date (newest first), then by ID for deterministic pagination
+    # Without the secondary sort, tenders sharing the same published_at appear in random order
+    query = query.order_by(nullslast(Tender.published_at.desc()), Tender.id.desc())
     
     # Pagination
     tenders = query.offset(skip).limit(limit).all()
