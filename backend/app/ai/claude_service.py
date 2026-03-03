@@ -442,6 +442,9 @@ Extract these fields and return JSON:
   "expected_value": numeric value in KD (estimated tender/contract value),
   "category": "IT|Construction|Services|Healthcare|Infrastructure|Other",
   "status": "Open|Awarded|Cancelled|null",
+  "announcement_type": "NewTender|Awarding|Cancellation|Postponement|OpeningEnvelopes|Complaint|null",
+  "awarded_vendor": "Name of winning company if awarded",
+  "awarded_value": numeric value in KD if award amount mentioned,
   "sectors": ["sector1", "sector2"],
   "is_stc_relevant": true or false
 }}
@@ -458,11 +461,25 @@ Extract these fields and return JSON:
 - For document_price_kd: Small fee to purchase tender documents (usually 5-50 KD)
 - For expected_value: Estimated contract/project value if mentioned (can be thousands to millions KD)
   * Look for phrases like "قيمة العقد", "القيمة التقديرية", "estimated value", "contract value"
+- For announcement_type: Detect what kind of gazette notice this is
+  * "NewTender" = new tender/RFQ/RFP announcement with submission deadline
+  * "Awarding" = award decision notice (ترسية, إرساء, نتيجة المناقصة)
+  * "Cancellation" = tender cancelled (إلغاء, ملغى)
+  * "Postponement" = deadline extension or postponement (تمديد, تأجيل)
+  * "OpeningEnvelopes" = envelope opening announcement (فتح المظاريف)
+  * "Complaint" = complaint or objection notice (تظلم, شكوى)
+  * null if unclear
 - For status: Detect if tender is awarded or cancelled
-  * "Awarded" if text mentions: "ترسية", "تم الترسية", "awarded", "winner", "الفائز"
+  * "Awarded" if text mentions: "ترسية", "تم الترسية", "إرساء", "awarded", "winner", "الفائز", "ترسو على"
   * "Cancelled" if text mentions: "إلغاء", "ملغى", "cancelled", "canceled"
   * "Open" if it's a new tender announcement with future deadline
   * null if status is unclear
+- For awarded_vendor: Extract the EXACT name of the winning company/vendor if this is an award notice
+  * Look for: "ترسو على شركة", "الفائز", "المرسى عليه", "awarded to", company name after "ترسية"
+  * Return null if not an award notice or vendor name not found
+- For awarded_value: The award/contract value in KD if mentioned in award notice
+  * Look for: "بمبلغ", "قيمة الترسية", "award value", amount near award text
+  * Return null if not mentioned
 - For sectors: Classify into ALL matching sectors from this list:
   * "telecom" = telecommunications, mobile networks, fiber optic, 5G/4G, phone systems
   * "datacenter" = data centers, cloud computing, servers, hosting, storage
@@ -489,7 +506,7 @@ Extract these fields and return JSON:
         
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self._call_with_retry(messages, max_tokens=500)
+            response = self._call_with_retry(messages, max_tokens=700)
             
             response_text = response.content[0].text
             

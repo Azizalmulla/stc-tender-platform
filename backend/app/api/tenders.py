@@ -40,6 +40,14 @@ class TenderResponse(BaseModel):
     ai_recommended_team: Optional[str]
     ai_reasoning: Optional[str]
     ai_processed_at: Optional[datetime]
+    # Award tracking fields
+    status: Optional[str]
+    announcement_type: Optional[str]
+    awarded_vendor: Optional[str]
+    awarded_value: Optional[float]
+    award_date: Optional[datetime]
+    expected_value: Optional[float]
+    parent_tender_id: Optional[int]
     
     class Config:
         from_attributes = True
@@ -70,6 +78,8 @@ async def get_tenders(
     value_min: Optional[float] = None,
     value_max: Optional[float] = None,
     urgency: Optional[str] = None,  # "7_days" or "14_days"
+    status: Optional[str] = None,  # "Awarded", "Open", "Cancelled", "Released"
+    announcement_type: Optional[str] = None,  # "NewTender", "Awarding", "Cancellation", etc.
     db: Session = Depends(get_db)
 ):
     """
@@ -174,6 +184,14 @@ async def get_tenders(
         elif deadline_status == "cancelled":
             # Cancelled = AI detected or manually set
             filters.append(Tender.status == "Cancelled")
+    
+    # Direct status filter (e.g. "Awarded", "Released", "Cancelled")
+    if status:
+        filters.append(Tender.status == status)
+    
+    # Announcement type filter (e.g. "NewTender", "Awarding", "Cancellation")
+    if announcement_type:
+        filters.append(Tender.announcement_type == announcement_type)
     
     if urgency:
         now = func.now()
@@ -281,11 +299,22 @@ async def get_tender_stats(db: Session = Depends(get_db)):
         )
     ).order_by(Tender.deadline).limit(10).all()
     
+    # Award stats
+    awarded_count = db.query(Tender).filter(Tender.status == 'Awarded').count()
+    
+    # Announcement type breakdown
+    ann_types = db.query(
+        Tender.announcement_type,
+        func.count(Tender.id)
+    ).filter(Tender.announcement_type.isnot(None)).group_by(Tender.announcement_type).all()
+    
     return {
         "total_tenders": total_tenders,
         "categories": [{"name": cat, "count": count} for cat, count in categories if cat],
         "top_ministries": [{"name": min, "count": count} for min, count in ministries if min],
         "recent_7_days": recent_count,
+        "awarded_count": awarded_count,
+        "announcement_types": [{"type": t, "count": c} for t, c in ann_types if t],
         "upcoming_deadlines": [
             {
                 "id": t.id,
@@ -296,3 +325,65 @@ async def get_tender_stats(db: Session = Depends(get_db)):
             for t in upcoming_deadlines
         ]
     }
+
+
+@router.get("/awarded/list", response_model=List[TenderResponse])
+async def get_awarded_tenders(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    ministry: Optional[str] = None,
+    sector: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all awarded tenders with optional filters.
+    Returns tenders where status='Awarded' or announcement_type='Awarding'.
+    """
+    query = db.query(Tender).filter(
+        or_(
+            Tender.status == 'Awarded',
+            Tender.announcement_type == 'Awarding'
+        )
+    )
+    
+    if ministry:
+        query = query.filter(Tender.ministry.ilike(f"%{ministry}%"))
+    
+    if sector:
+        query = query.filter(Tender.ai_sectors.any(sector))
+    
+    query = query.order_by(
+        nullslast(Tender.award_date.desc()),
+        Tender.published_at.desc(),
+        Tender.id.desc()
+    )
+    
+    return query.offset(skip).limit(limit).all()
+
+
+@router.get("/{tender_id}/awards", response_model=List[TenderResponse])
+async def get_tender_awards(
+    tender_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all award notices linked to a specific tender.
+    Also returns the original tender if this is an award notice.
+    """
+    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found")
+    
+    related = []
+    
+    # If this is an original tender, find its award notices
+    awards = db.query(Tender).filter(Tender.parent_tender_id == tender_id).all()
+    related.extend(awards)
+    
+    # If this is an award notice, find the original tender
+    if tender.parent_tender_id:
+        original = db.query(Tender).filter(Tender.id == tender.parent_tender_id).first()
+        if original:
+            related.append(original)
+    
+    return related

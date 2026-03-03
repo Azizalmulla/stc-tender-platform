@@ -231,6 +231,16 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
         if is_stc_relevant:
             print(f"    ✅ Tech-relevant tender")
         
+        # Award detection
+        announcement_type = extracted.get('announcement_type')
+        awarded_vendor = extracted.get('awarded_vendor')
+        awarded_value_raw = extracted.get('awarded_value')
+        status = extracted.get('status')
+        if announcement_type:
+            print(f"    📋 Announcement type: {announcement_type}")
+        if status == 'Awarded' or announcement_type == 'Awarding':
+            print(f"    🏆 AWARD DETECTED: vendor={awarded_vendor}, value={awarded_value_raw}")
+        
         summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
         
         # Voyage embedding (only for active tenders - saves API cost)
@@ -259,10 +269,18 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
         if ministry and isinstance(ministry, str):
             ministry = ministry.strip().rstrip('",;')
         
+        # Parse awarded_value to numeric
+        awarded_value = None
+        if awarded_value_raw:
+            try:
+                awarded_value = float(awarded_value_raw)
+            except (ValueError, TypeError):
+                awarded_value = None
+        
         # Create tender
         tender = Tender(
             title=tender_data['title'],
-            tender_number=tender_data.get('tender_number'),
+            tender_number=tender_data.get('tender_number') or extracted.get('tender_number'),
             url=tender_data['url'],
             published_at=tender_data['published_at'],
             deadline=new_deadline,
@@ -277,10 +295,38 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
             hash=tender_data['hash'],
             meeting_date=tender_data.get('meeting_date'),
             meeting_location=tender_data.get('meeting_location'),
+            announcement_type=announcement_type,
+            status=status or 'Released',
+            awarded_vendor=awarded_vendor,
+            awarded_value=awarded_value,
+            award_date=tender_data['published_at'] if (status == 'Awarded' or announcement_type == 'Awarding') else None,
         )
         
         db.add(tender)
         db.flush()
+        
+        # Award matching: link this award notice to the original tender by tender_number
+        tender_num = tender.tender_number
+        if tender_num and (status == 'Awarded' or announcement_type == 'Awarding'):
+            try:
+                original = db.query(Tender).filter(
+                    Tender.tender_number == tender_num,
+                    Tender.id != tender.id,
+                    Tender.announcement_type.in_([None, 'NewTender']),
+                ).order_by(Tender.published_at.asc()).first()
+                
+                if original:
+                    tender.parent_tender_id = original.id
+                    # Also update the original tender with award info
+                    original.status = 'Awarded'
+                    original.awarded_vendor = awarded_vendor
+                    original.awarded_value = awarded_value
+                    original.award_date = tender.award_date
+                    print(f"    🔗 Linked award to original tender #{original.id} ({original.tender_number})")
+                else:
+                    print(f"    ⚠️ No original tender found for tender_number={tender_num}")
+            except Exception as e:
+                print(f"    ⚠️ Award matching failed: {e}")
         
         # Create embedding
         tender_embedding = TenderEmbedding(
@@ -321,15 +367,27 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
    
    Return empty array [] if none match.
 
+3. **announcement_type**: What kind of gazette notice is this?
+   - "NewTender" = new tender/RFQ/RFP with submission deadline
+   - "Awarding" = award decision (ترسية, إرساء, نتيجة المناقصة)
+   - "Cancellation" = tender cancelled (إلغاء)
+   - "Postponement" = deadline extension (تمديد, تأجيل)
+   - "OpeningEnvelopes" = envelope opening (فتح المظاريف)
+   - null if unclear
+
+4. **awarded_vendor**: Exact name of winning company if this is an award notice. null otherwise.
+
+5. **awarded_value**: Award/contract amount in KD if mentioned in award notice. 0 otherwise.
+
 Return ONLY valid JSON in this exact format:
-{{"value": 0, "sectors": []}}
+{{"value": 0, "sectors": [], "announcement_type": null, "awarded_vendor": null, "awarded_value": 0}}
 
 Text:
 {extract_text[:3000]}"""
 
                 extract_response = claude_service.client.messages.create(
                     model=settings.CLAUDE_MODEL,
-                    max_tokens=150,
+                    max_tokens=250,
                     messages=[{"role": "user", "content": extract_prompt}]
                 )
                 
@@ -341,13 +399,46 @@ Text:
                     
                     value = extract_data.get('value', 0)
                     sectors = extract_data.get('sectors', [])
+                    ext_announcement = extract_data.get('announcement_type')
+                    ext_vendor = extract_data.get('awarded_vendor')
+                    ext_award_val = extract_data.get('awarded_value', 0)
                     
                     if value and value > 0:
                         tender.expected_value = float(value)
                     if sectors:
                         tender.ai_sectors = sectors
                     
-                    print(f"    💰 Value: {value:,.0f} KD, Sectors: {sectors}")
+                    # Merge award info from second extraction (fills gaps if first extraction missed it)
+                    if ext_announcement and not tender.announcement_type:
+                        tender.announcement_type = ext_announcement
+                    if ext_vendor and not tender.awarded_vendor:
+                        tender.awarded_vendor = ext_vendor
+                    if ext_award_val and ext_award_val > 0 and not tender.awarded_value:
+                        tender.awarded_value = float(ext_award_val)
+                    
+                    # If second extraction detects award, do matching
+                    if ext_announcement == 'Awarding' and not tender.parent_tender_id:
+                        tender.status = 'Awarded'
+                        tender.award_date = tender.award_date or tender.published_at
+                        tender_num = tender.tender_number
+                        if tender_num:
+                            try:
+                                original = db.query(Tender).filter(
+                                    Tender.tender_number == tender_num,
+                                    Tender.id != tender.id,
+                                    Tender.announcement_type.in_([None, 'NewTender']),
+                                ).order_by(Tender.published_at.asc()).first()
+                                if original:
+                                    tender.parent_tender_id = original.id
+                                    original.status = 'Awarded'
+                                    original.awarded_vendor = tender.awarded_vendor
+                                    original.awarded_value = tender.awarded_value
+                                    original.award_date = tender.award_date
+                                    print(f"    🔗 Linked award to original tender #{original.id}")
+                            except Exception as e:
+                                print(f"    ⚠️ Award matching (2nd pass) failed: {e}")
+                    
+                    print(f"    💰 Value: {value:,.0f} KD, Sectors: {sectors}, Type: {ext_announcement}")
         except Exception as e:
             print(f"    ⚠️ Value/sector extraction failed: {e}")
         
@@ -831,7 +922,7 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
                 if len(text.strip()) < 50:
                     continue
                 
-                # Use Claude to extract value AND classify sectors
+                # Use Claude to extract value, classify sectors, and detect awards
                 prompt = f"""Analyze this government tender and extract:
 
 1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
@@ -858,15 +949,27 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
    
    Return empty array [] if none match.
 
+3. **announcement_type**: What kind of gazette notice is this?
+   - "NewTender" = new tender/RFQ/RFP with submission deadline
+   - "Awarding" = award decision (ترسية, إرساء, نتيجة المناقصة)
+   - "Cancellation" = tender cancelled (إلغاء)
+   - "Postponement" = deadline extension (تمديد, تأجيل)
+   - "OpeningEnvelopes" = envelope opening (فتح المظاريف)
+   - null if unclear
+
+4. **awarded_vendor**: Exact name of winning company if this is an award notice. null otherwise.
+
+5. **awarded_value**: Award/contract amount in KD if mentioned in award notice. 0 otherwise.
+
 Return ONLY valid JSON in this exact format:
-{{"value": 0, "sectors": []}}
+{{"value": 0, "sectors": [], "announcement_type": null, "awarded_vendor": null, "awarded_value": 0}}
 
 Text:
 {text[:3000]}"""
 
                 response = claude_service.client.messages.create(
                     model=settings.CLAUDE_MODEL,
-                    max_tokens=150,
+                    max_tokens=250,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
@@ -882,6 +985,9 @@ Text:
                         
                         value = data.get('value', 0)
                         sectors = data.get('sectors', [])
+                        ann_type = data.get('announcement_type')
+                        vendor = data.get('awarded_vendor')
+                        award_val = data.get('awarded_value', 0)
                         
                         # Update tender
                         if value and value > 0:
@@ -890,8 +996,32 @@ Text:
                         if sectors:
                             tender.ai_sectors = sectors
                         
+                        if ann_type:
+                            tender.announcement_type = ann_type
+                        if vendor:
+                            tender.awarded_vendor = vendor
+                        if award_val and award_val > 0:
+                            tender.awarded_value = float(award_val)
+                        
+                        # Award matching
+                        if ann_type == 'Awarding' and tender.tender_number:
+                            tender.status = 'Awarded'
+                            tender.award_date = tender.award_date or tender.published_at
+                            original = db.query(Tender).filter(
+                                Tender.tender_number == tender.tender_number,
+                                Tender.id != tender.id,
+                                Tender.announcement_type.in_([None, 'NewTender']),
+                            ).order_by(Tender.published_at.asc()).first()
+                            if original:
+                                tender.parent_tender_id = original.id
+                                original.status = 'Awarded'
+                                original.awarded_vendor = vendor
+                                original.awarded_value = float(award_val) if award_val else None
+                                original.award_date = tender.award_date
+                                print(f"  🔗 Linked award #{tender.id} → original #{original.id}")
+                        
                         extracted += 1
-                        print(f"  ✅ Tender {tender.id}: {value:,.0f} KD, sectors: {sectors}")
+                        print(f"  ✅ Tender {tender.id}: {value:,.0f} KD, sectors: {sectors}, type: {ann_type}")
                         
                 except (json.JSONDecodeError, ValueError) as e:
                     print(f"  ⚠️ Tender {tender.id}: Could not parse response: {response_text[:100]}")

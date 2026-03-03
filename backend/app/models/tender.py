@@ -47,6 +47,8 @@ class Tender(Base):
     status = Column(String, server_default='Released')  # Released, Future, Awarded, Opened, Cancelled
     awarded_vendor = Column(String)
     awarded_value = Column(Numeric(15, 2))
+    award_date = Column(TIMESTAMP(timezone=True))  # When the award was announced
+    parent_tender_id = Column(BigInteger, ForeignKey("tenders.id", ondelete="SET NULL"))  # Links award notice to original tender
     justification = Column(String)
     announcement_type = Column(String)  # Awarding, Complaint, Opening Envelopes, etc.
     
@@ -69,6 +71,8 @@ class Tender(Base):
         Index('idx_tenders_category', 'category'),
         Index('idx_tenders_sector', 'sector'),
         Index('idx_tenders_status', 'status'),
+        Index('idx_tenders_tender_number', 'tender_number'),
+        Index('idx_tenders_announcement_type', 'announcement_type'),
     )
 
 
