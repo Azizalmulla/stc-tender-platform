@@ -83,6 +83,24 @@ class TenderEmbedding(Base):
     )
 
 
+class Client(Base):
+    __tablename__ = "clients"
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False)  # Company name (e.g. "STC", "KNPC")
+    chat_id = Column(String, unique=True, index=True)  # Telegram chat ID for notifications
+    sectors = Column(ARRAY(Text), nullable=False, server_default='{}')  # Allowed sectors
+    is_active = Column(Boolean, server_default='true')
+    api_key = Column(String, unique=True)  # Optional API key for programmatic access
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    __table_args__ = (
+        Index('idx_clients_chat_id', 'chat_id'),
+        Index('idx_clients_is_active', 'is_active'),
+    )
+
+
 class KeywordHit(Base):
     __tablename__ = "keyword_hits"
     

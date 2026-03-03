@@ -211,16 +211,7 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
             db.close()
             return None
         
-        # Check if tender is relevant to STC (technology/telecom)
-        is_stc_relevant = extracted.get('is_stc_relevant', True)  # Default to True if missing
-        if not is_stc_relevant:
-            print(f"    ⏭️  Skipping non-tech tender (not relevant to STC)")
-            db.close()
-            return None
-        
-        print(f"    ✅ Tech-relevant tender detected")
-        
-        # Get deadline FIRST (before expensive operations)
+        # Get deadline
         new_deadline = extracted.get('deadline')
         if new_deadline and isinstance(new_deadline, str):
             try:
@@ -228,16 +219,17 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
             except:
                 new_deadline = None
         
-        # Skip expired tenders (deadline has passed) - check BEFORE embedding
         if new_deadline:
-            today = datetime.now()
-            if new_deadline.tzinfo:
-                today = datetime.now(new_deadline.tzinfo)
-            if new_deadline < today:
-                print(f"    ⏭️  Skipping expired tender (deadline: {new_deadline.strftime('%Y-%m-%d')})")
-                db.close()
-                return None
-            print(f"    ✅ Active tender (deadline: {new_deadline.strftime('%Y-%m-%d')})")
+            print(f"    📅 Deadline: {new_deadline.strftime('%Y-%m-%d')}")
+        
+        # Log sector classification
+        sectors = extracted.get('sectors', []) or extracted.get('stc_sector', [])
+        if isinstance(sectors, str):
+            sectors = [sectors] if sectors else []
+        print(f"    🏷️  Sectors: {sectors or 'unclassified'}")
+        is_stc_relevant = extracted.get('is_stc_relevant', False)
+        if is_stc_relevant:
+            print(f"    ✅ Tech-relevant tender")
         
         summary = summary_data.get('summary_ar', '') if tender_data.get('language') == 'ar' else summary_data.get('summary_en', '')
         
@@ -307,12 +299,25 @@ def save_tender_to_db(tender_data: dict, normalizer) -> int:
 
 1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
 
-2. **sectors**: Which STC business sectors this tender is relevant to. Choose from ONLY these options:
+2. **sectors**: Classify into ALL matching sectors from this list:
    - "telecom" (telecommunications, fiber, 5G, mobile networks)
    - "datacenter" (data centers, cloud, servers, hosting)
    - "callcenter" (call centers, contact centers, customer service, IVR)
-   - "network" (networking, security, firewalls, routers, switches)
+   - "network" (networking, firewalls, routers, switches, cybersecurity)
    - "smartcity" (smart city, IoT, sensors, automation)
+   - "software" (software, ERP, apps, digital transformation, websites)
+   - "construction" (building, roads, bridges, civil works, renovation)
+   - "medical" (medical equipment, pharmaceuticals, hospital supplies)
+   - "oil_gas" (petroleum, refining, drilling, pipelines, chemicals)
+   - "education" (schools, universities, training, e-learning)
+   - "security" (CCTV, surveillance, access control, defense, fire safety)
+   - "transport" (vehicles, fleet, aviation, marine, shipping, GPS)
+   - "finance" (banking, insurance, financial systems, payments)
+   - "food" (catering, food supply, agriculture)
+   - "facilities" (cleaning, maintenance, furniture, office supplies)
+   - "environment" (waste management, water treatment, recycling)
+   - "energy" (electricity, solar, renewable energy, power plants)
+   - "legal" (legal services, consulting, auditing)
    
    Return empty array [] if none match.
 
@@ -324,7 +329,7 @@ Text:
 
                 extract_response = claude_service.client.messages.create(
                     model=settings.CLAUDE_MODEL,
-                    max_tokens=100,
+                    max_tokens=150,
                     messages=[{"role": "user", "content": extract_prompt}]
                 )
                 
@@ -831,12 +836,25 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
 
 1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
 
-2. **sectors**: Which STC business sectors this tender is relevant to. Choose from ONLY these options:
+2. **sectors**: Classify into ALL matching sectors from this list:
    - "telecom" (telecommunications, fiber, 5G, mobile networks)
    - "datacenter" (data centers, cloud, servers, hosting)
    - "callcenter" (call centers, contact centers, customer service, IVR)
-   - "network" (networking, security, firewalls, routers, switches)
+   - "network" (networking, firewalls, routers, switches, cybersecurity)
    - "smartcity" (smart city, IoT, sensors, automation)
+   - "software" (software, ERP, apps, digital transformation, websites)
+   - "construction" (building, roads, bridges, civil works, renovation)
+   - "medical" (medical equipment, pharmaceuticals, hospital supplies)
+   - "oil_gas" (petroleum, refining, drilling, pipelines, chemicals)
+   - "education" (schools, universities, training, e-learning)
+   - "security" (CCTV, surveillance, access control, defense, fire safety)
+   - "transport" (vehicles, fleet, aviation, marine, shipping, GPS)
+   - "finance" (banking, insurance, financial systems, payments)
+   - "food" (catering, food supply, agriculture)
+   - "facilities" (cleaning, maintenance, furniture, office supplies)
+   - "environment" (waste management, water treatment, recycling)
+   - "energy" (electricity, solar, renewable energy, power plants)
+   - "legal" (legal services, consulting, auditing)
    
    Return empty array [] if none match.
 
@@ -848,7 +866,7 @@ Text:
 
                 response = claude_service.client.messages.create(
                     model=settings.CLAUDE_MODEL,
-                    max_tokens=100,
+                    max_tokens=150,
                     messages=[{"role": "user", "content": prompt}]
                 )
                 
@@ -1095,12 +1113,25 @@ def run_re_enrich_task(limit: int = 50, body_threshold: int = 100):
 
 1. **value**: The tender/project value in KD (Kuwaiti Dinar). Convert millions to full numbers. Return 0 if not mentioned.
 
-2. **sectors**: Which STC business sectors this tender is relevant to. Choose from ONLY these options:
+2. **sectors**: Classify into ALL matching sectors from this list:
    - "telecom" (telecommunications, fiber, 5G, mobile networks)
    - "datacenter" (data centers, cloud, servers, hosting)
    - "callcenter" (call centers, contact centers, customer service, IVR)
-   - "network" (networking, security, firewalls, routers, switches)
+   - "network" (networking, firewalls, routers, switches, cybersecurity)
    - "smartcity" (smart city, IoT, sensors, automation)
+   - "software" (software, ERP, apps, digital transformation, websites)
+   - "construction" (building, roads, bridges, civil works, renovation)
+   - "medical" (medical equipment, pharmaceuticals, hospital supplies)
+   - "oil_gas" (petroleum, refining, drilling, pipelines, chemicals)
+   - "education" (schools, universities, training, e-learning)
+   - "security" (CCTV, surveillance, access control, defense, fire safety)
+   - "transport" (vehicles, fleet, aviation, marine, shipping, GPS)
+   - "finance" (banking, insurance, financial systems, payments)
+   - "food" (catering, food supply, agriculture)
+   - "facilities" (cleaning, maintenance, furniture, office supplies)
+   - "environment" (waste management, water treatment, recycling)
+   - "energy" (electricity, solar, renewable energy, power plants)
+   - "legal" (legal services, consulting, auditing)
    
    Return empty array [] if none match.
 
@@ -1112,7 +1143,7 @@ Text:
                         
                         extract_response = claude_service.client.messages.create(
                             model=settings.CLAUDE_MODEL,
-                            max_tokens=100,
+                            max_tokens=150,
                             messages=[{"role": "user", "content": extract_prompt}]
                         )
                         extract_text_response = extract_response.content[0].text.strip()

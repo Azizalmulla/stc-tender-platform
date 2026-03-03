@@ -442,7 +442,7 @@ Extract these fields and return JSON:
   "expected_value": numeric value in KD (estimated tender/contract value),
   "category": "IT|Construction|Services|Healthcare|Infrastructure|Other",
   "status": "Open|Awarded|Cancelled|null",
-  "stc_sector": "telecom|datacenter|callcenter|network|smartcity|null",
+  "sectors": ["sector1", "sector2"],
   "is_stc_relevant": true or false
 }}
 ```
@@ -463,18 +463,27 @@ Extract these fields and return JSON:
   * "Cancelled" if text mentions: "إلغاء", "ملغى", "cancelled", "canceled"
   * "Open" if it's a new tender announcement with future deadline
   * null if status is unclear
-- For stc_sector: Classify if relevant to STC (telecommunications company) business areas:
-  * "telecom" = telecommunications, mobile networks, fiber optic, 5G/4G, phone systems, اتصالات, تليكوم, ألياف ضوئية, شبكة الهاتف
-  * "datacenter" = data centers, cloud computing, servers, hosting, storage, مركز بيانات, خوادم, حوسبة سحابية, استضافة
-  * "callcenter" = call centers, contact centers, customer service systems, IVR, مركز اتصال, خدمة العملاء, الرد الآلي
-  * "network" = networking equipment, security, firewalls, routers, switches, VPN, cybersecurity, شبكات, أمن سيبراني, جدار ناري
-  * "smartcity" = smart city, IoT, sensors, automation, smart systems, المدينة الذكية, إنترنت الأشياء, أتمتة
-  * null if not related to any STC sector
-- For is_stc_relevant: Determine if this tender is relevant to a telecommunications/technology company like STC
-  * true if tender involves ANY of: IT systems, software, hardware, networking, telecommunications, security systems (CCTV, access control), data centers, cloud services, IoT, smart city, servers, computers, cybersecurity, call centers, phone systems, internet, fiber optics, 5G/4G, GPS, tracking systems, automation, digital transformation, etc.
-  * true if tender involves technology SERVICES like: IT maintenance, system integration, tech consulting, software development, network installation, etc.
-  * false if tender is clearly unrelated: construction/building work, furniture, vehicles (non-tech), food, cleaning, medical supplies, printing, stationery, uniforms, etc.
-  * When in doubt, lean towards true - STC prefers not to miss potential opportunities
+- For sectors: Classify into ALL matching sectors from this list:
+  * "telecom" = telecommunications, mobile networks, fiber optic, 5G/4G, phone systems
+  * "datacenter" = data centers, cloud computing, servers, hosting, storage
+  * "callcenter" = call centers, contact centers, customer service systems, IVR
+  * "network" = networking equipment, firewalls, routers, switches, VPN, cybersecurity
+  * "smartcity" = smart city, IoT, sensors, automation, smart systems
+  * "software" = software development, ERP, applications, digital transformation, websites
+  * "construction" = building, roads, bridges, civil works, renovation, engineering
+  * "medical" = medical equipment, pharmaceuticals, hospital supplies, healthcare devices
+  * "oil_gas" = petroleum, refining, drilling, pipelines, chemicals, industrial equipment
+  * "education" = schools, universities, training, educational materials, e-learning
+  * "security" = CCTV, surveillance, access control, police, military, defense, fire safety
+  * "transport" = vehicles, fleet, aviation, marine, shipping, logistics, GPS tracking
+  * "finance" = banking, insurance, financial systems, payment solutions
+  * "food" = catering, food supply, restaurants, kitchens, agriculture
+  * "facilities" = cleaning, maintenance, landscaping, furniture, office supplies, printing
+  * "environment" = waste management, water treatment, recycling, environmental protection
+  * "energy" = electricity, solar, renewable energy, power plants, generators
+  * "legal" = legal services, consulting, auditing, compliance
+  Return empty array [] if no clear sector match
+- For is_stc_relevant: true if tender involves technology/telecommunications (telecom, datacenter, network, software, smartcity, callcenter, security systems with IT component). false otherwise.
 
 **Return JSON now:**""".format(text_content=text[:2500].replace('{', '{{').replace('}', '}}'))
         

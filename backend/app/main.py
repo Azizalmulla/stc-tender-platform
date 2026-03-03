@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.core.config import settings
-from app.api import tenders, search, chat, cron, notifications, meetings, export, analytics
+from app.api import tenders, search, chat, cron, notifications, meetings, export, analytics, clients
 
 
 scheduler = BackgroundScheduler(timezone="UTC")
@@ -71,6 +71,7 @@ app.include_router(notifications.router, prefix="/api/notifications", tags=["not
 app.include_router(meetings.router, prefix="/api/meetings", tags=["meetings"])
 app.include_router(export.router, prefix="/api", tags=["export"])
 app.include_router(analytics.router, prefix="/api", tags=["analytics"])
+app.include_router(clients.router, prefix="/api/clients", tags=["clients"])
 
 
 @app.get("/")

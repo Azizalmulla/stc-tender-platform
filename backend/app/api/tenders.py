@@ -112,8 +112,21 @@ async def get_tenders(
         "telecom": ["telecom", "telecommunications", "اتصالات", "الاتصالات", "fiber", "فايبر", "5g", "mobile", "gsm", "lte"],
         "datacenter": ["datacenter", "data center", "data-center", "cloud", "server", "hosting", "مركز البيانات", "سحابة", "سيرفر", "خادم"],
         "callcenter": ["call center", "callcenter", "contact center", "مركز الاتصال", "خدمة العملاء", "customer service", "ivr", "pbx"],
-        "network": ["network", "networking", "security", "firewall", "router", "switch", "cisco", "الشبكات", "شبكة", "أمن", "جدار ناري"],
-        "smartcity": ["smart city", "smartcity", "iot", "internet of things", "المدينة الذكية", "انترنت الأشياء", "sensors", "حساسات"]
+        "network": ["network", "networking", "firewall", "router", "switch", "cisco", "الشبكات", "شبكة", "جدار ناري", "cybersecurity", "أمن سيبراني"],
+        "smartcity": ["smart city", "smartcity", "iot", "internet of things", "المدينة الذكية", "انترنت الأشياء", "sensors", "حساسات"],
+        "software": ["software", "برمجيات", "erp", "تطبيق", "application", "digital transformation", "تحول رقمي", "website", "موقع"],
+        "construction": ["construction", "بناء", "إنشاء", "مبنى", "roads", "طرق", "bridges", "جسور", "civil", "مدني", "renovation", "ترميم"],
+        "medical": ["medical", "طبي", "pharmaceutical", "أدوية", "hospital", "مستشفى", "healthcare", "صحي", "مختبر", "laboratory"],
+        "oil_gas": ["oil", "نفط", "petroleum", "بترول", "gas", "غاز", "drilling", "حفر", "pipeline", "أنابيب", "refinery", "تكرير"],
+        "education": ["education", "تعليم", "school", "مدرسة", "university", "جامعة", "training", "تدريب", "e-learning"],
+        "security": ["cctv", "surveillance", "مراقبة", "access control", "defense", "دفاع", "fire safety", "إطفاء", "أمن", "security"],
+        "transport": ["vehicle", "مركبات", "fleet", "أسطول", "aviation", "طيران", "marine", "بحري", "shipping", "شحن", "gps"],
+        "finance": ["banking", "بنك", "insurance", "تأمين", "financial", "مالي", "payment", "دفع"],
+        "food": ["catering", "تموين", "food", "غذاء", "restaurant", "مطعم", "agriculture", "زراعة"],
+        "facilities": ["cleaning", "تنظيف", "maintenance", "صيانة", "furniture", "أثاث", "office supplies", "قرطاسية", "printing", "طباعة"],
+        "environment": ["waste", "نفايات", "water treatment", "معالجة مياه", "recycling", "إعادة تدوير", "environment", "بيئة"],
+        "energy": ["electricity", "كهرباء", "solar", "طاقة شمسية", "renewable", "متجددة", "power plant", "محطة طاقة", "generator", "مولد"],
+        "legal": ["legal", "قانوني", "consulting", "استشارات", "audit", "تدقيق", "compliance", "امتثال"],
     }
     
     if sector and sector in SECTOR_KEYWORDS:
