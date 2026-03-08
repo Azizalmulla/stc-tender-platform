@@ -13,20 +13,19 @@ scheduler = BackgroundScheduler(timezone="UTC")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start scheduler on app startup
-    from app.api.cron import run_scrape_task
-    scheduler.add_job(
-        run_scrape_task,
-        CronTrigger(day_of_week="sun", hour=6, minute=0),  # Every Sunday 6am UTC = 9am Kuwait
-        id="weekly_scrape",
-        replace_existing=True,
-    )
-    scheduler.start()
-    print("✅ Weekly scrape scheduler started (every Sunday 9am Kuwait time)")
+    # Auto-scrape DISABLED — trigger manually via POST /api/cron/scrape-weekly
+    # from app.api.cron import run_scrape_task
+    # scheduler.add_job(
+    #     run_scrape_task,
+    #     CronTrigger(day_of_week="sun", hour=6, minute=0),  # Every Sunday 6am UTC = 9am Kuwait
+    #     id="weekly_scrape",
+    #     replace_existing=True,
+    # )
+    # scheduler.start()
+    print("⏸️ Weekly scrape scheduler DISABLED (use manual trigger)")
     yield
-    # Shutdown scheduler on app shutdown
-    scheduler.shutdown(wait=False)
-    print("🛑 Scheduler stopped")
+    # scheduler.shutdown(wait=False)
+    print("🛑 App stopped")
 
 
 class ProxyHeadersMiddleware(BaseHTTPMiddleware):
