@@ -19,7 +19,7 @@ trafilatura==1.6.4
 requests==2.31.0
 httpx>=0.28.1  # HTTP client for async requests - upgraded for mistralai compatibility
 cloudscraper==1.2.71  # Bypass Cloudflare protection
-# playwright removed - using lightweight cloudscraper instead
+playwright==1.49.1  # Phase 0: FREE local Chromium screenshot path. Browserless is PAID fallback-only; without this every screenshot would hit paid Browserless.
 
 # PDF Processing & Image Enhancement
 PyMuPDF==1.23.22

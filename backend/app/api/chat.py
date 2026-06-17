@@ -808,9 +808,8 @@ async def summarize_tender(
             "cached": True
         }
     
-    # Generate new summary
-    ai_service = OpenAIService()
-    summary_result = ai_service.summarize_tender(
+    # Generate new summary (Phase 0: use Claude, not the removed OpenAIService)
+    summary_result = claude_service.summarize_tender(
         title=tender.title or "",
         body=tender.body or "",
         lang=tender.lang or "ar"

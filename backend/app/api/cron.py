@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.core.cache import cache_manager  # For clearing cached responses
 from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
 from app.db.session import SessionLocal
-from app.models.tender import Tender, TenderEmbedding
+from app.models.tender import Tender, TenderEmbedding, UsageLog
 from app.ai.voyage_service import voyage_service  # Voyage AI for embeddings (voyage-law-2)
 from app.ai.claude_service import claude_service  # Claude Sonnet 4.6 for all AI tasks
 from app.parser.pdf_parser import TextNormalizer
@@ -61,6 +61,11 @@ def run_scrape_task(days_back: int = 7):
         total_processed = 0
         total_skipped = 0
         total_errors = 0
+
+        # Phase 0 cost cap: never OCR/AI-process more than this many NEW tenders
+        # in a single run (protects against an accidental full-table reprocess).
+        max_per_run = getattr(settings, "MAX_TENDERS_PER_RUN", 120)
+        print(f"🧮 Cost cap: max {max_per_run} new tenders processed this run")
         
         for category_id, category_name in categories:
             print(f"\n{'='*60}")
@@ -92,6 +97,11 @@ def run_scrape_task(days_back: int = 7):
             
             for i, raw_tender in enumerate(raw_listings, 1):
                 try:
+                    # Enforce per-run cost cap (counts NEW tenders processed)
+                    if (total_processed + category_processed) >= max_per_run:
+                        print(f"  🛑 Reached per-run cap of {max_per_run} new tenders — stopping AI processing for this run")
+                        break
+
                     # Calculate hash BEFORE OCR to check for duplicates
                     tender_hash = scraper.calculate_tender_hash(raw_tender)
                     
@@ -390,6 +400,16 @@ Text:
                     max_tokens=250,
                     messages=[{"role": "user", "content": extract_prompt}]
                 )
+                try:
+                    from app.core.usage_logger import log_usage as _log_usage, extract_anthropic_usage as _xu
+                    _i, _o = _xu(extract_response)
+                    _log_usage("anthropic", "value_sector", model=settings.CLAUDE_MODEL,
+                               tender_id=tender.id, input_tokens=_i, output_tokens=_o)
+                except Exception:
+                    pass
+                # Scrape path also performs value/sector extraction → mark it done
+                from datetime import timezone as _tz
+                tender.value_extracted_at = datetime.now(_tz.utc)
                 
                 extract_text_response = extract_response.content[0].text.strip()
                 start = extract_text_response.find('{')
@@ -484,38 +504,61 @@ async def scrape_weekly(
 async def fresh_scrape(
     background_tasks: BackgroundTasks,
     days_back: int = 14,
-    clear_first: bool = True,
+    clear_first: bool = False,      # Phase 0: NON-destructive by default (was True)
+    confirm_wipe: bool = False,     # Phase 0: explicit second confirmation required to wipe
     authorization: Optional[str] = Header(None)
 ):
     """
-    Fresh scrape - clears database and scrapes specified days back.
-    Perfect for a clean start with only active tenders.
-    
+    Scrape the last `days_back` days. NON-destructive by default.
+
+    DESTRUCTIVE wipe (delete ALL tenders + embeddings, then re-OCR/re-AI/re-embed
+    everything from scratch) is only performed when BOTH flags are set:
+        clear_first=true AND confirm_wipe=true
+    This guard exists because a full wipe + reprocess is the single biggest cost
+    event in the system. The normal weekly job must NEVER wipe.
+
     Args:
         days_back: Number of days to scrape (default 14)
-        clear_first: Whether to clear database first (default True)
+        clear_first: Request a destructive wipe (default False)
+        confirm_wipe: Required second confirmation for the wipe (default False)
     """
     # Simple auth check
     cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
     if cron_secret and authorization != f"Bearer {cron_secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    result = {"days_back": days_back, "clear_first": clear_first}
-    
-    # Clear database if requested
-    if clear_first:
+
+    result = {"days_back": days_back, "clear_first": clear_first, "confirm_wipe": confirm_wipe}
+
+    # Destructive wipe requested but not confirmed → refuse loudly, do nothing.
+    if clear_first and not confirm_wipe:
+        print("🛑 REFUSED destructive fresh-scrape: clear_first=true but confirm_wipe=false")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Destructive wipe refused. To delete ALL tenders + embeddings and "
+                "reprocess from scratch you must pass BOTH clear_first=true AND "
+                "confirm_wipe=true. This is intentional cost protection."
+            ),
+        )
+
+    # Clear database ONLY when explicitly confirmed
+    if clear_first and confirm_wipe:
         try:
             db = SessionLocal()
             embedding_count = db.query(TenderEmbedding).count()
-            db.query(TenderEmbedding).delete()
             tender_count = db.query(Tender).count()
+            print("⚠️ " + "=" * 70)
+            print(f"⚠️ DESTRUCTIVE WIPE CONFIRMED — deleting {tender_count} tenders + "
+                  f"{embedding_count} embeddings, then re-OCR/re-AI/re-embedding ALL.")
+            print("⚠️ This will incur Claude + Browserless + Voyage cost for EVERY tender.")
+            print("⚠️ " + "=" * 70)
+            db.query(TenderEmbedding).delete()
             db.query(Tender).delete()
             db.commit()
             db.close()
-            
-            # Also clear cached responses
+
             cache_cleared = cache_manager.clear_all()
-            
+
             result["cleared"] = {
                 "tenders": tender_count,
                 "embeddings": embedding_count,
@@ -524,28 +567,40 @@ async def fresh_scrape(
             print(f"🗑️ Cleared {tender_count} tenders, {embedding_count} embeddings, {cache_cleared} cached responses")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to clear database: {str(e)}")
-    
+
     # Queue the scrape task with specified days_back
     background_tasks.add_task(run_scrape_task, days_back)
-    
+
     return {
         "status": "fresh_scrape_started",
-        "message": f"Scraping last {days_back} days. Check logs for progress.",
+        "message": f"Scraping last {days_back} days (destructive={clear_first and confirm_wipe}). Check logs for progress.",
         "timestamp": datetime.now().isoformat(),
         **result
     }
 
 
 @router.post("/clear-database")
-async def clear_database(authorization: Optional[str] = Header(None)):
+async def clear_database(
+    confirm_wipe: bool = False,
+    authorization: Optional[str] = Header(None)
+):
     """
     Clear all tenders and embeddings from database
     USE WITH CAUTION - This deletes all data!
+    Phase 0: requires confirm_wipe=true to actually delete.
     """
     # Simple auth check (use env var for cron secret)
     cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
     if cron_secret and authorization != f"Bearer {cron_secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not confirm_wipe:
+        print("🛑 REFUSED /clear-database: confirm_wipe=false")
+        raise HTTPException(
+            status_code=400,
+            detail="Destructive wipe refused. Pass confirm_wipe=true to delete all tenders + embeddings."
+        )
+    print("⚠️ DESTRUCTIVE /clear-database CONFIRMED — deleting ALL tenders + embeddings")
     
     try:
         db = SessionLocal()
@@ -761,15 +816,27 @@ async def enrich_tenders_endpoint(
 
 
 @router.post("/delete-all-tenders")
-async def delete_all_tenders(authorization: Optional[str] = Header(None)):
+async def delete_all_tenders(
+    confirm_wipe: bool = False,
+    authorization: Optional[str] = Header(None)
+):
     """
     Delete all tenders from the database (for testing)
     Protected by authorization header for security
+    Phase 0: requires confirm_wipe=true to actually delete.
     """
     # Simple auth check
     cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
     if cron_secret and authorization != f"Bearer {cron_secret}":
         raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not confirm_wipe:
+        print("🛑 REFUSED /delete-all-tenders: confirm_wipe=false")
+        raise HTTPException(
+            status_code=400,
+            detail="Destructive delete refused. Pass confirm_wipe=true to delete all tenders."
+        )
+    print("⚠️ DESTRUCTIVE /delete-all-tenders CONFIRMED — deleting ALL tenders")
     
     try:
         db = SessionLocal()
@@ -889,12 +956,26 @@ async def generate_embeddings(authorization: Optional[str] = Header(None)):
 
 
 @router.post("/extract-tender-values")
-async def extract_tender_values(authorization: Optional[str] = Header(None)):
+async def extract_tender_values(
+    limit: int = 200,
+    force: bool = False,
+    authorization: Optional[str] = Header(None)
+):
     """
-    One-time job to extract tender values AND classify sectors using Claude.
-    Populates expected_value and ai_sectors fields for accurate filtering.
+    Extract tender values AND classify sectors using Claude. IDEMPOTENT.
+
+    Phase 0: only processes tenders that have NOT been value-extracted yet
+    (value_extracted_at IS NULL). Re-running this does NOT re-bill Claude for
+    already-processed tenders. Pass force=true to deliberately reprocess
+    everything (capped by `limit`).
+
+    Args:
+        limit: Max tenders to process this run (cost cap, default 200)
+        force: Reprocess even tenders already marked value_extracted_at
     """
     import json
+    from datetime import timezone
+    from app.core.usage_logger import log_usage, extract_anthropic_usage
     
     cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
     if cron_secret and authorization != f"Bearer {cron_secret}":
@@ -903,14 +984,18 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
     try:
         db = SessionLocal()
         
-        # Get all tenders (re-process all for sector classification)
-        tenders = db.query(Tender).all()
+        # IDEMPOTENT selection: skip already-extracted tenders unless force=true
+        q = db.query(Tender)
+        if not force:
+            q = q.filter(Tender.value_extracted_at.is_(None))
+        tenders = q.order_by(Tender.created_at.desc()).limit(limit).all()
         
-        print(f"📊 Processing {len(tenders)} tenders for value + sector extraction")
+        mode = "FORCE re-extract ALL" if force else "only unprocessed (value_extracted_at IS NULL)"
+        print(f"📊 Processing {len(tenders)} tenders for value + sector extraction — mode: {mode}, limit={limit}")
         
         if not tenders:
             db.close()
-            return {"status": "success", "message": "No tenders found", "extracted": 0}
+            return {"status": "success", "message": "No tenders need value extraction", "extracted": 0}
         
         extracted = 0
         
@@ -920,6 +1005,8 @@ async def extract_tender_values(authorization: Optional[str] = Header(None)):
                 text = f"{tender.title or ''}\n{tender.body or ''}\n{tender.summary_ar or ''}\n{tender.summary_en or ''}"
                 
                 if len(text.strip()) < 50:
+                    # Mark as processed so we never retry (and re-bill) this thin tender
+                    tender.value_extracted_at = datetime.now(timezone.utc)
                     continue
                 
                 # Use Claude to extract value, classify sectors, and detect awards
@@ -972,6 +1059,12 @@ Text:
                     max_tokens=250,
                     messages=[{"role": "user", "content": prompt}]
                 )
+                _in, _out = extract_anthropic_usage(response)
+                log_usage("anthropic", "value_sector", model=settings.CLAUDE_MODEL,
+                          tender_id=tender.id, input_tokens=_in, output_tokens=_out)
+                
+                # Mark processed regardless of parse outcome (idempotency: never re-bill)
+                tender.value_extracted_at = datetime.now(timezone.utc)
                 
                 response_text = response.content[0].text.strip()
                 
@@ -1394,3 +1487,69 @@ async def re_enrich_tenders(
         "unenriched_count": unenriched_count,
         "processing": min(limit, unenriched_count)
     }
+
+
+@router.get("/usage-report")
+async def usage_report(hours: int = 24, authorization: Optional[str] = Header(None)):
+    """
+    Cost observability report from the usage_logs table (Phase 0).
+
+    Aggregates provider calls + estimated cost over the last `hours`.
+    Read-only. Use this to verify a scrape run's true cost.
+    """
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    from datetime import timedelta, timezone as _tz
+    from sqlalchemy import func as _func
+
+    db = SessionLocal()
+    try:
+        since = datetime.now(_tz.utc) - timedelta(hours=hours)
+
+        rows = db.query(
+            UsageLog.provider,
+            UsageLog.run_type,
+            _func.count(UsageLog.id).label("calls"),
+            _func.coalesce(_func.sum(UsageLog.input_tokens), 0).label("input_tokens"),
+            _func.coalesce(_func.sum(UsageLog.output_tokens), 0).label("output_tokens"),
+            _func.coalesce(_func.sum(UsageLog.estimated_cost_usd), 0).label("est_cost_usd"),
+            _func.coalesce(_func.sum(UsageLog.retry_count), 0).label("retries"),
+            _func.count(UsageLog.error).label("errors"),
+        ).filter(
+            UsageLog.created_at >= since
+        ).group_by(
+            UsageLog.provider, UsageLog.run_type
+        ).all()
+
+        breakdown = [{
+            "provider": r.provider,
+            "run_type": r.run_type,
+            "calls": int(r.calls),
+            "input_tokens": int(r.input_tokens or 0),
+            "output_tokens": int(r.output_tokens or 0),
+            "estimated_cost_usd": round(float(r.est_cost_usd or 0), 4),
+            "retries": int(r.retries or 0),
+            "errors": int(r.errors or 0),
+        } for r in rows]
+
+        totals = {
+            "calls": sum(b["calls"] for b in breakdown),
+            "estimated_cost_usd": round(sum(b["estimated_cost_usd"] for b in breakdown), 4),
+            "by_provider": {},
+        }
+        for b in breakdown:
+            p = totals["by_provider"].setdefault(b["provider"], {"calls": 0, "estimated_cost_usd": 0.0})
+            p["calls"] += b["calls"]
+            p["estimated_cost_usd"] = round(p["estimated_cost_usd"] + b["estimated_cost_usd"], 4)
+
+        return {
+            "status": "success",
+            "window_hours": hours,
+            "since": since.isoformat(),
+            "totals": totals,
+            "breakdown": sorted(breakdown, key=lambda x: -x["estimated_cost_usd"]),
+        }
+    finally:
+        db.close()

@@ -60,6 +60,7 @@ class Tender(Base):
     ai_recommended_team = Column(String)  # Which STC team should handle this
     ai_reasoning = Column(Text)  # Why it's relevant/not relevant
     ai_processed_at = Column(TIMESTAMP(timezone=True))  # When AI analysis was done
+    value_extracted_at = Column(TIMESTAMP(timezone=True))  # When value/sector/award extraction last ran (idempotency guard)
     
     # Export tracking (prevents duplicate exports)
     exported_to_stc_at = Column(TIMESTAMP(timezone=True))  # When exported to STC Excel
@@ -102,6 +103,35 @@ class Client(Base):
     __table_args__ = (
         Index('idx_clients_chat_id', 'chat_id'),
         Index('idx_clients_is_active', 'is_active'),
+    )
+
+
+class UsageLog(Base):
+    """Per-call provider usage / cost-observability log (Phase 0).
+
+    One row per external paid call (Claude, Voyage, Browserless, OpenAI...).
+    Written best-effort: failures here must never break the pipeline.
+    """
+    __tablename__ = "usage_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    provider = Column(String, nullable=False)        # anthropic | voyage | browserless | openai
+    model = Column(String)                            # e.g. claude-sonnet-4-6, voyage-law-2
+    run_type = Column(String)                         # ocr | summarize | extract | value_sector | relevance | embedding | chat_answer | query_analysis | screenshot
+    tender_id = Column(BigInteger)                    # nullable; source row if applicable
+    source_id = Column(String)                        # nullable; external id (edition/page, etc.)
+    input_tokens = Column(BigInteger)
+    output_tokens = Column(BigInteger)
+    estimated_cost_usd = Column(Numeric(12, 6))
+    cache_hit = Column(Boolean, server_default='false')
+    retry_count = Column(BigInteger, server_default='0')
+    error = Column(Text)                              # error message if the call failed
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_usage_logs_created_at', 'created_at'),
+        Index('idx_usage_logs_provider', 'provider'),
+        Index('idx_usage_logs_run_type', 'run_type'),
     )
 
 

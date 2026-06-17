@@ -15,6 +15,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Phase 0: install Chromium + its OS dependencies so the FREE local Playwright
+# screenshot path actually works. Without this, every flipbook screenshot falls
+# through to the PAID Browserless fallback, defeating cost control.
+RUN python -m playwright install --with-deps chromium
+
 # Copy application code
 COPY . .
 

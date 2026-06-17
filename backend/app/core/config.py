@@ -71,6 +71,17 @@ class Settings(BaseSettings):
     
     # Cron Jobs
     CRON_SECRET: Optional[str] = None  # Secret token to protect cron endpoints
+
+    # ── Phase 0 cost-control flags ──────────────────────────────────────────
+    # Legacy Celery daily scrape (OpenAI pipeline). OFF by default.
+    ENABLE_CELERY_BEAT: bool = False
+    # Legacy OpenAIService scrape/processing path. OFF by default.
+    ENABLE_LEGACY_OPENAI_PIPELINE: bool = False
+    # Write per-call provider usage rows to the usage_logs table.
+    ENABLE_USAGE_LOGGING: bool = True
+    # Hard ceiling on how many tenders a single scrape run will OCR/AI-process.
+    # Protects against an accidental full-table reprocess blowing up cost.
+    MAX_TENDERS_PER_RUN: int = 120
     
     # Google Cloud Document AI (for PDF OCR)
     GOOGLE_CLOUD_PROJECT: Optional[str] = None
