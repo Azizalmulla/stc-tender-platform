@@ -1,0 +1,29 @@
+# Active Caddy config for the tender platform (Docker container).
+# No domain yet -> serve on :80 and reverse-proxy to the API.
+# When a domain is assigned, switch to Caddyfile.domain.template (auto-HTTPS).
+#
+# IMPORTANT: the bundled Caddy container owns ports 80/443. Stop/disable the
+# host's system Caddy before `docker compose up` (see DEPLOYMENT.md).
+
+{
+	admin off
+}
+
+:80 {
+	encode gzip
+
+	# Liveness probe
+	handle /health {
+		reverse_proxy tender-api:8000
+	}
+
+	# Backend API
+	handle /api/* {
+		reverse_proxy tender-api:8000
+	}
+
+	# Everything else -> API root (until a dashboard is added)
+	handle {
+		reverse_proxy tender-api:8000
+	}
+}

@@ -43,12 +43,18 @@ yarn-error.log*
 logs/
 *.log
 
-# Google Cloud credentials
+# Credentials / service-account keys (never commit)
 credentials.json
+gcp-credentials.json
+*-credentials.json
+service-account*.json
+*.pem
+*.key
 *.json
 !package.json
 !package-lock.json
 !tsconfig.json
+!components.json
 
 # Redis
 dump.rdb
@@ -69,3 +75,7 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# VPS deploy runtime artifacts
+/backups/
+/.deploy-state/
