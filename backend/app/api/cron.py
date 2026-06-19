@@ -517,6 +517,7 @@ def run_scrape_task_v2(days_back: int = 7):
     total_skipped = 0
     total_errors = 0
     total_page_calls = 0
+    strong_numbers = set()  # run-wide: numbers won by a strong match (dedup guard)
 
     try:
         for category_id, category_name in categories:
@@ -581,6 +582,7 @@ def run_scrape_task_v2(days_back: int = 7):
                             saved = _save_block_row(
                                 scraper, raw, category_map.get(category_id, "tenders"),
                                 a, page_multi, existing_urls, existing_hashes, apply_block_to_fields,
+                                strong_numbers,
                             )
                             if saved:
                                 total_processed += 1
@@ -614,9 +616,12 @@ def run_scrape_task_v2(days_back: int = 7):
 
 
 def _save_block_row(scraper, raw, category, assignment, page_multi,
-                    existing_urls, existing_hashes, apply_block_to_fields) -> int:
+                    existing_urls, existing_hashes, apply_block_to_fields,
+                    strong_numbers=None) -> int:
     """Create one clean Tender row from a pre-assigned page block. Returns id or None."""
     from datetime import timezone as _tz
+    from app.services import extraction_quality as _eq
+    strong_numbers = strong_numbers if strong_numbers is not None else set()
 
     edition_id = raw.get('EditionID_FK')
     page_number = raw.get('FromPage')
@@ -631,6 +636,16 @@ def _save_block_row(scraper, raw, category, assignment, page_multi,
         return None  # idempotent guard
 
     block = assignment.get("block")
+    strength = assignment.get("strength", "weak")
+
+    # run-level de-dup: a weak match cannot claim a number already won strongly
+    if block:
+        _num = block.get("tender_number")
+        _nk = _eq.normalize_number(_num) if _num else None
+        if strength == "strong" and _nk:
+            strong_numbers.add(_nk)
+        elif _nk and _nk in strong_numbers:
+            block = None  # demote to needs_review stub below
 
     db = SessionLocal()
     try:

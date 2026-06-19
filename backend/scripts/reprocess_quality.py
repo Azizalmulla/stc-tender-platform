@@ -222,6 +222,7 @@ def main() -> int:
                     match_warnings=a["warnings"],
                 )
                 fields.pop("_match_strength", None)
+                fields["_strength"] = a["strength"]
                 fields["_real_title"] = fields.get("title_ar") or fields.get("title_en")
                 fields["_old_title"] = m["title"]
                 updates[m["id"]] = fields
@@ -230,6 +231,19 @@ def main() -> int:
             scraper.close_playwright()
         except Exception:
             pass
+
+    # Run-level de-dup: a weak (title-only) match must NOT claim a tender number
+    # already won by a strong (number-verified) match elsewhere — the two-page
+    # spread overlap otherwise lets the same tender be claimed twice.
+    strong_by_num = {}
+    for tid, f in updates.items():
+        if f.get("_strength") == "strong" and f.get("tender_number"):
+            strong_by_num[eq.normalize_number(f["tender_number"])] = tid
+    for tid, f in list(updates.items()):
+        if f.get("_strength") != "strong" and f.get("tender_number"):
+            k = eq.normalize_number(f["tender_number"])
+            if k in strong_by_num and strong_by_num[k] != tid:
+                updates[tid] = {"_no_match": True, "_dup_of": strong_by_num[k]}
 
     print(f"\n🧮 Claude page_extract calls this run: {page_calls}", flush=True)
 
@@ -257,7 +271,12 @@ def main() -> int:
             if fields.get("_error") or fields.get("_no_match"):
                 t.extraction_quality_status = "needs_review"
                 t.needs_review = True
-                reason = "listing_match_weak" if fields.get("_no_match") else fields.get("_error")
+                if fields.get("_dup_of"):
+                    reason = "duplicate_block_claim"
+                elif fields.get("_no_match"):
+                    reason = "listing_match_weak"
+                else:
+                    reason = fields.get("_error")
                 t.extraction_warnings = list(dict.fromkeys((t.extraction_warnings or []) + [reason]))
                 t.ai_processed_at = _dt.now(_tz.utc)
                 db.commit()
