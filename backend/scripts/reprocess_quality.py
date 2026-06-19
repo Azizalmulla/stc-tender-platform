@@ -147,10 +147,20 @@ def main() -> int:
 
         target_ids = [t.id for t in rows]
         before_snaps = {t.id: _snapshot(t) for t in rows}
-        # lightweight, detached copies of just what the slow phase needs
+        # Use the IMMUTABLE original listing identity for matching. If a prior
+        # reprocess already ran, `tender_number`/`title` were overwritten — but the
+        # original synthetic label is preserved in source_label ("<number> - Edition N").
+        # Matching on the mutated number would let an earlier wrong match re-confirm
+        # itself. (The live scrape matches on AdsTitle, which is immutable.)
+        def _orig_identity(t):
+            label = t.source_label or t.title or ""
+            num = label.rsplit(" - Edition", 1)[0].strip() if label else (t.tender_number or "")
+            return num
         meta = [{
-            "id": t.id, "url": t.url, "tender_number": t.tender_number,
-            "title": t.title, "published_at": t.published_at,
+            "id": t.id, "url": t.url,
+            "tender_number": _orig_identity(t),
+            "title": _orig_identity(t),
+            "published_at": t.published_at,
         } for t in rows]
         print(f"🎯 Reprocessing {len(meta)} rows: {target_ids}", flush=True)
         print("── BEFORE quality report (scoped) ──", flush=True)
