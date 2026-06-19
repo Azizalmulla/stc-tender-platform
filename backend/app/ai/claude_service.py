@@ -17,40 +17,63 @@ class ClaudeOCRService:
     def __init__(self):
         if not settings.ANTHROPIC_API_KEY:
             raise ValueError("ANTHROPIC_API_KEY not configured")
-        # Best practice: Configure SDK-level retry and timeout
-        # - max_retries=5: Retry 5 times (default is 2) for transient errors
-        # - timeout=120: 2 minute timeout (prevents hanging on slow responses)
-        # SDK auto-retries: connection errors, 408, 429, 500+ with exponential backoff
+        # Phase 0 — FLATTENED RETRIES (cost control):
+        # The Anthropic SDK is the SINGLE source of retries. Previously this was
+        # max_retries=5 AND wrapped in a custom 3x loop => up to 15 billed calls
+        # for one logical Vision/OCR request. We cap the SDK at 2 attempts and the
+        # custom wrapper does NOT add extra attempts (default loop = 1 pass).
+        # SDK auto-retries: connection errors, 408, 429, 500+, overloaded.
         self.client = Anthropic(
             api_key=settings.ANTHROPIC_API_KEY,
-            max_retries=5,
-            timeout=120.0  # 2 minutes
+            max_retries=2,   # was 5 — flattened
+            timeout=120.0    # 2 minutes
         )
         self.model = settings.CLAUDE_MODEL
     
-    def _call_with_retry(self, messages: list, max_tokens: int = 4096, max_retries: int = 3) -> Any:
-        """Call Claude API with automatic retry for overload errors (529)"""
+    def _call_with_retry(
+        self,
+        messages: list,
+        max_tokens: int = 4096,
+        max_retries: int = 1,            # was 3 — no longer multiplies SDK retries
+        run_type: str = "claude_call",
+        tender_id: int = None,
+    ) -> Any:
+        """Call Claude once and rely on the SDK's built-in retries.
+
+        `max_retries` defaults to 1 (a single pass) so this wrapper can never
+        multiply the SDK's retry budget. It still records usage + errors.
+        """
+        from app.core.usage_logger import log_usage, extract_anthropic_usage
+
         last_error = None
-        for attempt in range(max_retries):
+        for attempt in range(max(1, max_retries)):
             try:
                 response = self.client.messages.create(
                     model=self.model,
                     max_tokens=max_tokens,
                     messages=messages
                 )
+                in_tok, out_tok = extract_anthropic_usage(response)
+                log_usage(
+                    "anthropic", run_type, model=self.model, tender_id=tender_id,
+                    input_tokens=in_tok, output_tokens=out_tok, retry_count=attempt,
+                )
                 return response
             except Exception as e:
                 error_str = str(e)
                 last_error = e
-                # Check for overload error (529)
-                if "529" in error_str or "overload" in error_str.lower():
-                    wait_time = (2 ** attempt) * 5  # 5s, 10s, 20s
+                is_overload = "529" in error_str or "overload" in error_str.lower()
+                # Only sleep+retry here if the caller explicitly opted into >1 pass.
+                if is_overload and attempt < max_retries - 1:
+                    wait_time = (2 ** attempt) * 5
                     print(f"  ⏳ Claude overloaded, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
                     time.sleep(wait_time)
-                else:
-                    # Non-retryable error, raise immediately
-                    raise
-        # All retries exhausted
+                    continue
+                log_usage(
+                    "anthropic", run_type, model=self.model, tender_id=tender_id,
+                    retry_count=attempt, error=error_str,
+                )
+                raise
         raise last_error
     
     def extract_tender_from_image(
@@ -108,7 +131,7 @@ class ClaudeOCRService:
                 }
             ]
             
-            response = self._call_with_retry(messages, max_tokens=4096)
+            response = self._call_with_retry(messages, max_tokens=4096, run_type="ocr")
             
             # Extract response text
             response_text = response.content[0].text
@@ -385,7 +408,7 @@ Generate the JSON now:""".format(
         
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self._call_with_retry(messages, max_tokens=1500)
+            response = self._call_with_retry(messages, max_tokens=1500, run_type="summarize")
             
             response_text = response.content[0].text
             
@@ -506,7 +529,7 @@ Extract these fields and return JSON:
         
         try:
             messages = [{"role": "user", "content": prompt}]
-            response = self._call_with_retry(messages, max_tokens=700)
+            response = self._call_with_retry(messages, max_tokens=700, run_type="extract")
             
             response_text = response.content[0].text
             
@@ -633,6 +656,7 @@ Q: "IT tenders from MOF with meetings scheduled"
 Return ONLY the JSON, no explanation."""
         
         try:
+            from app.core.usage_logger import log_usage, extract_anthropic_usage
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=800,
@@ -642,6 +666,8 @@ Return ONLY the JSON, no explanation."""
                     "content": prompt
                 }]
             )
+            _in, _out = extract_anthropic_usage(response)
+            log_usage("anthropic", "query_analysis", model=self.model, input_tokens=_in, output_tokens=_out)
             
             response_text = response.content[0].text
             
@@ -840,6 +866,7 @@ I found [N tenders] in total. Here are the 5 most relevant:
 """
         
         try:
+            from app.core.usage_logger import log_usage, extract_anthropic_usage
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=2000,
@@ -849,6 +876,8 @@ I found [N tenders] in total. Here are the 5 most relevant:
                     "content": prompt
                 }]
             )
+            _in, _out = extract_anthropic_usage(response)
+            log_usage("anthropic", "chat_answer", model=self.model, input_tokens=_in, output_tokens=_out)
             
             response_text = response.content[0].text
             print(f"📝 Claude raw response length: {len(response_text)} chars")
@@ -920,7 +949,9 @@ I found [N tenders] in total. Here are the 5 most relevant:
 
     
     @retry(
-        stop=stop_after_attempt(2),
+        # Phase 0: single attempt at this layer — the SDK already retries (max_retries=2).
+        # Prevents decorator(2) x SDK(2) = 4x multiplication on chat streaming.
+        stop=stop_after_attempt(1),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((Exception,))
     )

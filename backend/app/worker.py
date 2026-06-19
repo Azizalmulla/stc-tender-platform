@@ -31,19 +31,37 @@ celery_app.conf.update(
 )
 
 # Celery beat schedule (cron jobs)
-celery_app.conf.beat_schedule = {
-    'scrape-daily': {
-        'task': 'app.worker.scrape_and_process_tenders',
-        'schedule': crontab(hour=2, minute=0),  # Run daily at 2 AM Kuwait time
-    },
-}
+# Phase 0: DISABLED by default. This legacy daily scrape uses the OpenAI pipeline
+# and runs in parallel with the active Render cron → /api/cron/scrape-weekly (Claude).
+# Leaving it on would double-scrape and silently bill OpenAI every day.
+# Re-enable only by setting ENABLE_CELERY_BEAT=true (and actually running a beat process).
+if settings.ENABLE_CELERY_BEAT:
+    print("⚠️ Celery beat ENABLED via ENABLE_CELERY_BEAT — legacy daily OpenAI scrape is active")
+    celery_app.conf.beat_schedule = {
+        'scrape-daily': {
+            'task': 'app.worker.scrape_and_process_tenders',
+            'schedule': crontab(hour=2, minute=0),  # Run daily at 2 AM Kuwait time
+        },
+    }
+else:
+    celery_app.conf.beat_schedule = {}
+    print("⏸️ Celery beat schedule DISABLED (Phase 0). Active scrape = /api/cron/scrape-weekly")
 
 
 @celery_app.task(name='app.worker.scrape_and_process_tenders')
 def scrape_and_process_tenders():
     """
     Main task: Scrape Kuwait Alyoum and process all tenders
+
+    Phase 0: LEGACY OpenAI pipeline. Gated behind ENABLE_LEGACY_OPENAI_PIPELINE.
+    The active pipeline is /api/cron/scrape-weekly (Claude). This is kept only
+    for emergency fallback and must be explicitly enabled.
     """
+    if not settings.ENABLE_LEGACY_OPENAI_PIPELINE:
+        print("⏸️ scrape_and_process_tenders SKIPPED — legacy OpenAI pipeline disabled "
+              "(set ENABLE_LEGACY_OPENAI_PIPELINE=true to enable). Use /api/cron/scrape-weekly instead.")
+        return {"status": "disabled", "reason": "legacy OpenAI pipeline disabled (Phase 0)"}
+
     print("Starting daily scrape...")
     
     # Run async scraper
@@ -87,7 +105,13 @@ def scrape_and_process_tenders():
 def process_single_tender(tender_data: dict):
     """
     Process a single tender: summarize, extract fields, generate embedding
+
+    Phase 0: LEGACY OpenAI path — gated behind ENABLE_LEGACY_OPENAI_PIPELINE.
     """
+    if not settings.ENABLE_LEGACY_OPENAI_PIPELINE:
+        print("⏸️ process_single_tender SKIPPED — legacy OpenAI pipeline disabled (Phase 0)")
+        return {"status": "disabled", "reason": "legacy OpenAI pipeline disabled (Phase 0)"}
+
     db = SessionLocal()
     ai_service = OpenAIService()
     
@@ -165,7 +189,15 @@ def reprocess_embeddings(batch_size: int = 100):
     """
     Reprocess embeddings for tenders that don't have them
     Useful for backfilling after initial import
+
+    Phase 0: LEGACY OpenAI-embedding path (wrong dimension vs Voyage). Gated.
+    Use /api/cron/generate-embeddings (Voyage) instead.
     """
+    if not settings.ENABLE_LEGACY_OPENAI_PIPELINE:
+        print("⏸️ reprocess_embeddings SKIPPED — legacy OpenAI path disabled (Phase 0). "
+              "Use /api/cron/generate-embeddings (Voyage).")
+        return {"status": "disabled", "reason": "legacy OpenAI pipeline disabled (Phase 0)"}
+
     db = SessionLocal()
     ai_service = OpenAIService()
     

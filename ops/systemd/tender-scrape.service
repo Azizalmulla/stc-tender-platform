@@ -1,0 +1,25 @@
+# Weekly safe-incremental scrape (one-shot). Triggered by tender-scrape.timer.
+# Install:
+#   cp ops/systemd/tender-scrape.* /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now tender-scrape.timer
+#
+# Runs the dedicated one-shot scrape container. NEVER destructive.
+
+[Unit]
+Description=Tender platform weekly incremental scrape
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/tender-platform
+# Build is cached after the first deploy; run the one-shot scrape profile.
+ExecStart=/usr/bin/docker compose --profile scrape run --rm scrape
+TimeoutStartSec=3600
+# Surface failures in `systemctl status` / journal.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

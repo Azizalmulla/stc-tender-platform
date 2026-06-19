@@ -65,12 +65,22 @@ class VoyageEmbeddingService:
             # Log token usage
             tokens_used = result.total_tokens
             print(f"  ✅ Voyage embedding generated ({tokens_used} tokens, input_type={input_type})")
+            try:
+                from app.core.usage_logger import log_usage
+                log_usage("voyage", "embedding", model=self.model, input_tokens=tokens_used)
+            except Exception:
+                pass
             
             # Return the embedding (list of 1024 floats)
             return result.embeddings[0]
             
         except Exception as e:
             print(f"  ❌ Voyage embedding generation error: {e}")
+            try:
+                from app.core.usage_logger import log_usage
+                log_usage("voyage", "embedding", model=self.model, error=str(e))
+            except Exception:
+                pass
             # Return zero vector as fallback
             return [0.0] * self.embedding_dimension
     

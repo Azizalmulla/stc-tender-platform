@@ -371,6 +371,14 @@ class KuwaitAlyomScraper:
                     "waitForTimeout": 5000  # Wait 5 seconds for flipbook to render PDF
                 }
                 
+                # Log every actual PAID Browserless call for cost observability
+                try:
+                    from app.core.usage_logger import log_usage
+                    log_usage("browserless", "screenshot", source_id=f"{edition_id}/{page_number}", retry_count=attempt)
+                except Exception:
+                    pass
+                print(f"💸 BROWSERLESS PAID CALL: Edition {edition_id} Page {page_number} (attempt {attempt})")
+
                 response = requests.post(browserless_url, json=payload, timeout=30)
                 
                 if response.status_code != 200:
@@ -1506,25 +1514,28 @@ STRUCTURED TEXT:"""
         try:
             print(f"📄 Extracting text from page: Edition {edition_id}, Page {page_number}")
             
-            # Method 1: Try Browserless screenshot (PRIMARY - fastest)
-            screenshot_bytes = self._screenshot_page_with_browserless(edition_id, page_number)
-            if screenshot_bytes:
-                print(f"🖼️  Using screenshot-based extraction...")
-                result = self._extract_text_from_image(screenshot_bytes)
-                if result and result.get('text') and len(result['text']) > 20:
-                    print(f"✅ Extracted {len(result['text'])} characters from screenshot")
-                    return result
-                else:
-                    print(f"⚠️  Screenshot extraction returned minimal text (< 20 chars), trying PDF OCR...")
-            
-            # Method 2: Playwright screenshot (Kuwait Alyom uses proprietary encrypted PDF format
-            # that only the flipbook JS can render — Playwright lets JS run and captures the result)
-            print(f"� Trying Playwright screenshot...")
+            # Method 1 (PRIMARY): Local Playwright screenshot — FREE.
+            # Kuwait Alyom serves a proprietary encrypted PDF that only the flipbook
+            # JS can render, so we let local headless Chromium run the JS and capture it.
+            print(f"🎭 Trying local Playwright screenshot (primary, free)...")
             screenshot_bytes = self._screenshot_page_with_playwright(edition_id, page_number)
             if screenshot_bytes:
                 result = self._extract_text_from_image(screenshot_bytes)
                 if result and result.get('text') and len(result['text']) > 20:
                     print(f"✅ Extracted {len(result['text'])} characters via Playwright+Claude OCR")
+                    return result
+                else:
+                    print(f"⚠️  Playwright screenshot OCR returned minimal text (< 20 chars), falling back to Browserless...")
+
+            # Method 2 (FALLBACK ONLY): Browserless hosted screenshot — PAID.
+            # Only reached if local Playwright failed or produced no usable text.
+            print(f"💸 BROWSERLESS FALLBACK: local Playwright failed for Edition {edition_id} Page {page_number} — using PAID Browserless")
+            screenshot_bytes = self._screenshot_page_with_browserless(edition_id, page_number)
+            if screenshot_bytes:
+                print(f"🖼️  Using Browserless screenshot-based extraction...")
+                result = self._extract_text_from_image(screenshot_bytes)
+                if result and result.get('text') and len(result['text']) > 20:
+                    print(f"✅ Extracted {len(result['text'])} characters from Browserless screenshot")
                     return result
 
             print(f"⚠️  All OCR methods returned minimal or no text")

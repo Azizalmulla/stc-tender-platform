@@ -1,0 +1,13 @@
+# Weekly trigger for the tender scrape — Sunday 06:00 Kuwait time (03:00 UTC).
+# Persistent=true ensures a missed run (VPS off) fires on next boot.
+
+[Unit]
+Description=Run tender platform weekly scrape (Sunday morning, Kuwait time)
+
+[Timer]
+OnCalendar=Sun *-*-* 06:00:00 Asia/Kuwait
+Persistent=true
+Unit=tender-scrape.service
+
+[Install]
+WantedBy=timers.target

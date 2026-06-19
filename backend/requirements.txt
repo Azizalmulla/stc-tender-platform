@@ -19,7 +19,7 @@ trafilatura==1.6.4
 requests==2.31.0
 httpx>=0.28.1  # HTTP client for async requests - upgraded for mistralai compatibility
 cloudscraper==1.2.71  # Bypass Cloudflare protection
-# playwright removed - using lightweight cloudscraper instead
+playwright==1.49.1  # Phase 0: FREE local Chromium screenshot path. Browserless is PAID fallback-only; without this every screenshot would hit paid Browserless.
 
 # PDF Processing & Image Enhancement
 PyMuPDF==1.23.22
@@ -40,8 +40,9 @@ camel-tools==1.5.7
 pyarabic==0.6.15
 
 # AI & Embeddings
-# mistralai>=1.9.0  # DEPRECATED: Mistral OCR API doesn't handle complex newspaper layouts well (extracts headers/footers instead of content)
-anthropic>=0.74.0  # Claude Sonnet 4.6 Vision for OCR, summarization, extraction, and Q&A - works perfectly with complex layouts
+mistralai>=1.9.0  # Mistral OCR 3 (mistral-ocr-2512): page-level OCR + document_annotation (structured JSON). Benchmark backend only (fails on gazette layouts).
+anthropic>=0.74.0  # Claude Sonnet 4.6 Vision for OCR, summarization, extraction, and Q&A - production page extractor + summaries/QA
+openai>=1.50.0  # OpenAI vision (gpt-5.4-mini) page-extractor backend for benchmarking via PAGE_EXTRACTOR_PROVIDER=openai
 voyageai>=0.2.0  # Voyage AI for embeddings (voyage-law-2 optimized for legal documents)
 
 # Date Processing

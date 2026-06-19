@@ -134,6 +134,13 @@ Return JSON only:
                 }],
                 tool_choice={"type": "tool", "name": "score_tender_relevance"}
             )
+
+            try:
+                from app.core.usage_logger import log_usage, extract_anthropic_usage
+                _in, _out = extract_anthropic_usage(response)
+                log_usage("anthropic", "relevance", model=self.claude.model, input_tokens=_in, output_tokens=_out)
+            except Exception:
+                pass
             
             # Extract structured result (guaranteed valid!)
             tool_use = next((block for block in response.content if block.type == "tool_use"), None)

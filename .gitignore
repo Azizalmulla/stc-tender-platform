@@ -11,10 +11,10 @@ build/
 dist/
 *.egg-info/
 
-# Environment variables
+# Environment variables (keep the committed template)
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # IDEs
 .vscode/
@@ -43,12 +43,16 @@ yarn-error.log*
 logs/
 *.log
 
-# Google Cloud credentials
+# Credentials / service-account keys (never commit)
+# Targeted patterns only — do NOT blanket-ignore *.json (that hides
+# package.json / tsconfig.json / components.json and other real config).
 credentials.json
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
+gcp-credentials.json
+*-credentials.json
+service-account*.json
+*service-account*.json
+*.pem
+*.key
 
 # Redis
 dump.rdb
@@ -69,3 +73,7 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# VPS deploy runtime artifacts
+/backups/
+/.deploy-state/

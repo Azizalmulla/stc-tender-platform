@@ -1,0 +1,111 @@
+# Kuwait Alyoum / STC Tender Platform — VPS-only deployment
+# Target: /opt/tender-platform on the tender VPS. No Render/Fly/Railway.
+#
+# Profiles:
+#   (default)  -> tender-api + redis + caddy   (uses external DATABASE_URL, e.g. Neon)
+#   localdb    -> also start a self-hosted postgres+pgvector (see DEPLOYMENT.md)
+#   scrape     -> one-shot weekly scrape job (run via: docker compose run --rm scrape)
+#
+# Bring up the web stack:   docker compose up -d
+# With local Postgres:      docker compose --profile localdb up -d
+# Run the weekly scrape:    docker compose --profile scrape run --rm scrape
+
+services:
+  tender-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: tender-platform/api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # cache lives in the redis service; override in .env if needed
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      redis:
+        condition: service_started
+    # Bind to loopback only — Caddy is the public entrypoint. Never expose 8000 publicly.
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks: [tender]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [tender]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - tender-api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [tender]
+
+  # Optional self-hosted database. Enable with: --profile localdb
+  # NOTE: a from-scratch schema bootstrap is required first — see DEPLOYMENT.md.
+  postgres:
+    image: pgvector/pgvector:pg16
+    profiles: ["localdb"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tender}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-tender}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./ops/postgres-init:/docker-entrypoint-initdb.d:ro
+    # Loopback only; the API reaches it over the compose network.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tender} -d ${POSTGRES_DB:-tender}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    networks: [tender]
+
+  # One-shot weekly scrape (safe incremental, non-destructive). Never starts on `up`.
+  # Invoked by the systemd timer: docker compose --profile scrape run --rm scrape
+  scrape:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: tender-platform/api:latest
+    profiles: ["scrape"]
+    restart: "no"
+    env_file: .env
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    command: ["python", "scripts/run_weekly_scrape.py"]
+    networks: [tender]
+
+networks:
+  tender:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  redis_data:
+  pg_data:

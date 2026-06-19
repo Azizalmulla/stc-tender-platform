@@ -1,0 +1,29 @@
+# Domain Caddyfile template — use once a DNS name points at the VPS.
+# 1) Replace api.example.com (and dashboard.example.com if used).
+# 2) Copy over caddy/Caddyfile.
+# 3) docker compose up -d caddy
+# Caddy obtains and renews TLS certificates automatically.
+
+{
+	# email you@example.com   # uncomment for Let's Encrypt expiry notices
+}
+
+# ── API ─────────────────────────────────────────────────────────────────────
+api.example.com {
+	encode gzip
+
+	handle /health {
+		reverse_proxy tender-api:8000
+	}
+
+	handle {
+		reverse_proxy tender-api:8000
+	}
+}
+
+# ── Optional dashboard (Next.js frontend) ───────────────────────────────────
+# Enable only after the `frontend` service is added to docker-compose.yml.
+# dashboard.example.com {
+# 	encode gzip
+# 	reverse_proxy frontend:3000
+# }
