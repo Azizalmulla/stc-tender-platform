@@ -11,10 +11,10 @@ build/
 dist/
 *.egg-info/
 
-# Environment variables
+# Environment variables (keep the committed template)
 .env
-.env.local
-.env.production
+.env.*
+!.env.example
 
 # IDEs
 .vscode/
@@ -44,17 +44,15 @@ logs/
 *.log
 
 # Credentials / service-account keys (never commit)
+# Targeted patterns only — do NOT blanket-ignore *.json (that hides
+# package.json / tsconfig.json / components.json and other real config).
 credentials.json
 gcp-credentials.json
 *-credentials.json
 service-account*.json
+*service-account*.json
 *.pem
 *.key
-*.json
-!package.json
-!package-lock.json
-!tsconfig.json
-!components.json
 
 # Redis
 dump.rdb
