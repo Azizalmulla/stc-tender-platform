@@ -70,45 +70,67 @@ def _looks_like_real_number(s: str) -> bool:
     return False
 
 
+_BARE_SHORT = re.compile(r"^\d{1,2}$")
+
+
 def clean_tender_number(
     primary: Optional[str],
     candidates: Optional[List[str]],
-    page_text: Optional[str],
+    block_text: Optional[str],
+    listing_number: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Return {number, confidence, candidates, warnings}.
 
-    Priority: explicit on-page anchor (مناقصة رقم / RFQ / CA/CPC) > a well-formed
-    primary/candidate > nothing. Fiscal-year and >12-digit OCR strings are rejected.
+    IMPORTANT: `block_text` must be THIS block's own text only — never the whole
+    page — otherwise numbers from neighbouring tenders leak in.
+
+    Trust order: a candidate that equals the listing's own number (strong external
+    signal) > the model's per-block primary number > an anchor found in the block's
+    own text > other model candidates. Fiscal-year, >12-digit OCR strings, and bare
+    1–2 digit "numbers" are rejected/down-ranked.
     """
     warnings: List[str] = []
     pool: List[Tuple[str, float, str]] = []  # (number, confidence, source)
-    text = _norm(page_text)
+    text = _norm(block_text)
+    ln = normalize_number(listing_number)
 
-    # 1) Anchored matches found directly in the page text (highest trust)
-    for m in _AR_NUM_ANCHOR.finditer(text):
-        val = _norm(m.group(1)).rstrip(".,؛)")
-        if not _is_garbage_number(val):
-            pool.append((val, 0.95, "ar_anchor"))
-    for m in _EN_RFQ_ANCHOR.finditer(text):
-        val = f"{m.group(1).upper()}/{_norm(m.group(2))}"
-        pool.append((val, 0.92, "rfq_anchor"))
-    for m in _CODE_ANCHOR.finditer(text.upper()):
-        val = re.sub(r"\s+", "", m.group(1))
-        pool.append((val, 0.9, "code_anchor"))
+    # model's per-block primary number — most trusted intrinsic signal
+    p = _norm(primary)
+    if p and not _is_garbage_number(p):
+        pool.append((p, 0.5 if _BARE_SHORT.match(p) else 0.9, "model_primary"))
+    elif p:
+        warnings.append("rejected_garbage_number")
 
-    # 2) Model-proposed primary + candidates
-    proposed = [c for c in ([primary] + list(candidates or [])) if c]
-    for c in proposed:
+    # other model candidates
+    for c in (candidates or []):
         c = _norm(c)
         if not c:
             continue
         if _is_garbage_number(c):
             warnings.append("rejected_garbage_number")
             continue
-        if _looks_like_real_number(c):
-            # boost if it also appears anchored in the text
-            conf = 0.85 if normalize_number(c) in {normalize_number(p[0]) for p in pool} else 0.7
-            pool.append((c, conf, "model"))
+        pool.append((c, 0.45 if _BARE_SHORT.match(c) else 0.65, "candidate"))
+
+    # anchors found in THIS block's own text (not the whole page)
+    for m in _AR_NUM_ANCHOR.finditer(text):
+        val = _norm(m.group(1)).rstrip(".,؛)")
+        if not _is_garbage_number(val):
+            pool.append((val, 0.8, "ar_anchor"))
+    for m in _EN_RFQ_ANCHOR.finditer(text):
+        pool.append((f"{m.group(1).upper()}/{_norm(m.group(2))}", 0.78, "rfq_anchor"))
+    for m in _CODE_ANCHOR.finditer(text.upper()):
+        pool.append((re.sub(r"\s+", "", m.group(1)), 0.78, "code_anchor"))
+
+    # boost whichever candidate equals the listing number (authoritative match)
+    if ln:
+        for i, (num, conf, src) in enumerate(pool):
+            if normalize_number(num) == ln:
+                pool[i] = (num, max(conf, 0.95), src + "+listing")
+
+    if not pool:
+        warnings.append("ambiguous_tender_number")
+        proposed = [c for c in ([primary] + list(candidates or [])) if c]
+        return {"number": None, "confidence": 0.2, "candidates": proposed, "warnings": warnings}
 
     # de-dupe keeping highest confidence per normalized number
     best_by_norm: Dict[str, Tuple[str, float, str]] = {}
@@ -121,15 +143,16 @@ def clean_tender_number(
 
     ranked = sorted(best_by_norm.values(), key=lambda x: x[1], reverse=True)
     cand_list = [r[0] for r in ranked]
-
-    if not ranked:
-        # nothing qualified (fiscal-year / OCR-garbage only) — do NOT persist garbage
-        warnings.append("ambiguous_tender_number")
-        return {"number": None, "confidence": 0.2,
-                "candidates": [c for c in proposed], "warnings": warnings}
-
     best_num, best_conf, _ = ranked[0]
-    # if multiple distinct strong candidates, lower confidence + flag
+
+    # a bare 1–2 digit "number" (e.g. "مناقصة رقم 3") is too weak to trust unless
+    # it is exactly the listing's own number — down-rank so it goes to review.
+    if _BARE_SHORT.match(normalize_number(best_num)) and (not ln or normalize_number(best_num) != ln):
+        best_conf = min(best_conf, 0.5)
+        if "ambiguous_tender_number" not in warnings:
+            warnings.append("ambiguous_tender_number")
+
+    # only flag ambiguity when several DISTINCT high-confidence numbers compete
     strong = [r for r in ranked if r[1] >= 0.85]
     if len(strong) > 1 and len({normalize_number(s[0]) for s in strong}) > 1:
         best_conf = min(best_conf, 0.6)
@@ -138,7 +161,7 @@ def clean_tender_number(
         warnings.append("ambiguous_tender_number")
 
     return {"number": best_num, "confidence": round(best_conf, 2),
-            "candidates": cand_list, "warnings": warnings}
+            "candidates": cand_list, "warnings": list(dict.fromkeys(warnings))}
 
 
 # ── Deadline ────────────────────────────────────────────────────────────────
@@ -323,6 +346,65 @@ def match_block_to_listing(
         return {"block": blocks[0], "strength": "weak", "warnings": ["listing_match_weak"]}
 
     return {"block": None, "strength": "none", "warnings": ["listing_match_weak"]}
+
+
+def assign_blocks_to_listings(
+    blocks: List[Dict[str, Any]],
+    listings: List[Dict[str, Any]],
+) -> Dict[Any, Dict[str, Any]]:
+    """Greedy UNIQUE assignment of page blocks to listing rows.
+
+    Prevents two listings from grabbing the same block (the duplicate-number bug).
+    `listings` items need {id, tender_number, title}. Returns
+    {listing_id: {block, strength, warnings}}.
+
+    Pass 1: match by tender number (authoritative) — each block used at most once.
+    Pass 2: remaining listings matched by title-token overlap to remaining blocks.
+    Pass 3: if exactly one listing and one block remain, pair them (weak).
+    """
+    result: Dict[Any, Dict[str, Any]] = {}
+    pool = list(range(len(blocks)))
+
+    # Pass 1 — strong, by number
+    for L in listings:
+        ln = normalize_number(L.get("tender_number"))
+        if not ln:
+            continue
+        for bi in list(pool):
+            b = blocks[bi]
+            cands = [b.get("tender_number")] + list(b.get("tender_number_candidates") or [])
+            if any(normalize_number(c) == ln for c in cands if c):
+                result[L["id"]] = {"block": b, "strength": "strong", "warnings": []}
+                pool.remove(bi)
+                break
+
+    # Pass 2 — weak, by title overlap (unique)
+    for L in listings:
+        if L["id"] in result:
+            continue
+        lt = _title_tokens(L.get("title"))
+        best_bi, best_score = None, 0.0
+        for bi in pool:
+            b = blocks[bi]
+            bt = _title_tokens(b.get("title_ar")) | _title_tokens(b.get("title_en")) | _title_tokens(b.get("body_text"))
+            if not lt or not bt:
+                continue
+            score = len(lt & bt) / max(1, len(lt))
+            if score > best_score:
+                best_bi, best_score = bi, score
+        if best_bi is not None and best_score >= 0.4:
+            result[L["id"]] = {"block": blocks[best_bi], "strength": "weak", "warnings": ["listing_match_weak"]}
+            pool.remove(best_bi)
+
+    # Pass 3 — last 1:1
+    remaining = [L for L in listings if L["id"] not in result]
+    if len(remaining) == 1 and len(pool) == 1:
+        result[remaining[0]["id"]] = {"block": blocks[pool[0]], "strength": "weak", "warnings": ["listing_match_weak"]}
+        pool.clear()
+
+    for L in listings:
+        result.setdefault(L["id"], {"block": None, "strength": "none", "warnings": ["listing_match_weak"]})
+    return result
 
 
 # ── Roll-up status ──────────────────────────────────────────────────────────

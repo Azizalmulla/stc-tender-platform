@@ -203,9 +203,11 @@ def main() -> int:
             page_text = "\n".join(str(b.get("body_text") or "") for b in blocks)
             print(f"  🧩 extracted {len(blocks)} block(s), multi={page_multi}", flush=True)
 
+            listings = [{"id": m["id"], "tender_number": m["tender_number"], "title": m["title"]} for m in grp]
+            assigned = eq.assign_blocks_to_listings(blocks, listings)
             for m in grp:
-                match = eq.match_block_to_listing(blocks, m["tender_number"], m["title"])
-                block = match["block"]
+                a = assigned.get(m["id"], {"block": None, "strength": "none", "warnings": ["listing_match_weak"]})
+                block = a["block"]
                 if not block:
                     updates[m["id"]] = {"_no_match": True}
                     continue
@@ -214,10 +216,10 @@ def main() -> int:
                     listing_number=m["tender_number"],
                     listing_title=m["title"],
                     published_at=m["published_at"],
-                    page_text=page_text,
+                    page_text=block.get("body_text"),
                     page_multi=page_multi,
-                    match_strength=match["strength"],
-                    match_warnings=match["warnings"],
+                    match_strength=a["strength"],
+                    match_warnings=a["warnings"],
                 )
                 fields.pop("_match_strength", None)
                 fields["_real_title"] = fields.get("title_ar") or fields.get("title_en")

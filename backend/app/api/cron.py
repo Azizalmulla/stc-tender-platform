@@ -569,14 +569,18 @@ def run_scrape_task_v2(days_back: int = 7):
                     result = extract_page(img, "png", source_page=f"{edition_id}/{page_number}")
                     blocks = result.get("tenders", [])
                     page_multi = result.get("page_contains_multiple_tenders", len(blocks) > 1)
-                    page_text = "\n".join(str(b.get("body_text") or "") for b in blocks)
 
-                    for raw in grp:
+                    # unique block→listing assignment for the whole page
+                    listings = [{"id": i, "tender_number": raw.get('AdsTitle', ''),
+                                 "title": raw.get('AdsTitle', '')} for i, raw in enumerate(grp)]
+                    assigned = eq.assign_blocks_to_listings(blocks, listings)
+
+                    for i, raw in enumerate(grp):
+                        a = assigned.get(i, {"block": None, "strength": "none", "warnings": ["listing_match_weak"]})
                         try:
                             saved = _save_block_row(
                                 scraper, raw, category_map.get(category_id, "tenders"),
-                                blocks, page_multi, page_text, existing_urls, existing_hashes,
-                                eq, apply_block_to_fields,
+                                a, page_multi, existing_urls, existing_hashes, apply_block_to_fields,
                             )
                             if saved:
                                 total_processed += 1
@@ -609,9 +613,9 @@ def run_scrape_task_v2(days_back: int = 7):
     return result
 
 
-def _save_block_row(scraper, raw, category, blocks, page_multi, page_text,
-                    existing_urls, existing_hashes, eq, apply_block_to_fields) -> int:
-    """Create one clean Tender row from a matched page block. Returns id or None."""
+def _save_block_row(scraper, raw, category, assignment, page_multi,
+                    existing_urls, existing_hashes, apply_block_to_fields) -> int:
+    """Create one clean Tender row from a pre-assigned page block. Returns id or None."""
     from datetime import timezone as _tz
 
     edition_id = raw.get('EditionID_FK')
@@ -626,8 +630,7 @@ def _save_block_row(scraper, raw, category, blocks, page_multi, page_text,
     if url in existing_urls or content_hash in existing_hashes:
         return None  # idempotent guard
 
-    match = eq.match_block_to_listing(blocks, listing_title, listing_title)
-    block = match["block"]
+    block = assignment.get("block")
 
     db = SessionLocal()
     try:
@@ -654,10 +657,10 @@ def _save_block_row(scraper, raw, category, blocks, page_multi, page_text,
             listing_number=listing_title,
             listing_title=listing_title,
             published_at=published_at,
-            page_text=page_text,
+            page_text=block.get("body_text"),
             page_multi=page_multi,
-            match_strength=match["strength"],
-            match_warnings=match["warnings"],
+            match_strength=assignment.get("strength", "weak"),
+            match_warnings=assignment.get("warnings", []),
         )
         fields.pop("_match_strength", None)
 

@@ -45,11 +45,13 @@ def apply_block_to_fields(
 
     ann_type = block.get("announcement_type")
 
-    # tender number (anchored + rejection of fiscal-year / garbage)
+    # tender number — use THIS block's own text only (never the whole page) plus
+    # the listing number as an authoritative external signal.
     num = eq.clean_tender_number(
         block.get("tender_number"),
         block.get("tender_number_candidates"),
-        page_text,
+        block.get("body_text"),
+        listing_number=listing_number,
     )
     warnings += num["warnings"]
 
