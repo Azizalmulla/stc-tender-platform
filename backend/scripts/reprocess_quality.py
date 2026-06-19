@@ -111,15 +111,27 @@ def main() -> int:
     from app.models.tender import Tender
     from app.core.config import settings
     from app.services.quality_report import build_quality_report
+    from collections import defaultdict
 
-    db = SessionLocal()
-    try:
-        if args.report_only:
+    # ── report-only ──────────────────────────────────────────────────────────
+    if args.report_only:
+        db = SessionLocal()
+        try:
             ids = [int(x) for x in args.ids.split(",")] if args.ids else None
             print(json.dumps(build_quality_report(db, ids=ids), ensure_ascii=False, indent=2))
             return 0
+        finally:
+            db.close()
 
-        # resolve target rows
+    if not settings.KUWAIT_ALYOM_USERNAME or not settings.KUWAIT_ALYOM_PASSWORD:
+        print("❌ Scraper credentials not configured.", flush=True)
+        return 2
+
+    # ── PHASE 1: read targets, snapshot, then CLOSE the DB ───────────────────
+    # We must NOT hold a Neon connection open during the slow render/AI phase —
+    # the serverless pooler drops idle SSL connections (commit would then fail).
+    db = SessionLocal()
+    try:
         if args.ids:
             ids = [int(x) for x in args.ids.split(",") if x.strip()]
             rows = db.query(Tender).filter(Tender.id.in_(ids)).all()
@@ -134,122 +146,151 @@ def main() -> int:
             return 2
 
         target_ids = [t.id for t in rows]
-        print(f"🎯 Reprocessing {len(rows)} rows: {target_ids}", flush=True)
+        before_snaps = {t.id: _snapshot(t) for t in rows}
+        # lightweight, detached copies of just what the slow phase needs
+        meta = [{
+            "id": t.id, "url": t.url, "tender_number": t.tender_number,
+            "title": t.title, "published_at": t.published_at,
+        } for t in rows]
+        print(f"🎯 Reprocessing {len(meta)} rows: {target_ids}", flush=True)
         print("── BEFORE quality report (scoped) ──", flush=True)
         print(json.dumps(build_quality_report(db, ids=target_ids), ensure_ascii=False, indent=2), flush=True)
-
-        # group by page
-        from collections import defaultdict
-        groups = defaultdict(list)
-        for t in rows:
-            e, p = _edition_page(t.url or "")
-            groups[(e, p)].append(t)
-
-        if not settings.KUWAIT_ALYOM_USERNAME or not settings.KUWAIT_ALYOM_PASSWORD:
-            print("❌ Scraper credentials not configured.", flush=True)
-            return 2
-
-        from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
-        from app.ai.page_extractor import extract_page
-        from app.services.extraction_pipeline import apply_block_to_fields
-        from app.services import extraction_quality as eq
-
-        scraper = KuwaitAlyomScraper(
-            username=settings.KUWAIT_ALYOM_USERNAME,
-            password=settings.KUWAIT_ALYOM_PASSWORD,
-        )
-        if not scraper.login():
-            print("❌ Login failed.", flush=True)
-            return 1
-
-        changes = []
-        page_calls = 0
-        try:
-            for (edition, page), grp in groups.items():
-                if not edition or not page:
-                    for t in grp:
-                        changes.append((t, _snapshot(t), {"error": "unparseable_url"}))
-                    continue
-
-                print(f"\n📄 Page edition={edition} no={page} ({len(grp)} listing rows)", flush=True)
-                # Render the page ONCE (free local Playwright) → bytes for the page extractor.
-                img = scraper._screenshot_page_with_playwright(edition, page)
-                if not img:
-                    print("  ⚠️  Playwright failed; trying Browserless fallback", flush=True)
-                    img = scraper._screenshot_page_with_browserless(edition, page)
-                if not img:
-                    for t in grp:
-                        changes.append((t, _snapshot(t), {"error": "screenshot_failed"}))
-                    continue
-
-                page_calls += 1
-                result = extract_page(img, "png", source_page=f"{edition}/{page}")
-                blocks = result.get("tenders", [])
-                page_multi = result.get("page_contains_multiple_tenders", len(blocks) > 1)
-                page_text = "\n".join(str(b.get("body_text") or "") for b in blocks)
-                print(f"  🧩 extracted {len(blocks)} block(s), multi={page_multi}", flush=True)
-
-                for t in grp:
-                    before = _snapshot(t)
-                    match = eq.match_block_to_listing(blocks, t.tender_number, t.title)
-                    block = match["block"]
-                    if not block:
-                        t.extraction_quality_status = "needs_review"
-                        t.needs_review = True
-                        t.extraction_warnings = list(
-                            dict.fromkeys((t.extraction_warnings or []) + ["listing_match_weak"])
-                        )
-                        changes.append((t, before, {"matched": False, **_snapshot(t)}))
-                        continue
-
-                    fields = apply_block_to_fields(
-                        block,
-                        listing_number=t.tender_number,
-                        listing_title=t.title,
-                        published_at=t.published_at,
-                        page_text=page_text,
-                        page_multi=page_multi,
-                        match_strength=match["strength"],
-                        match_warnings=match["warnings"],
-                    )
-                    fields.pop("_match_strength", None)
-
-                    # preserve old synthetic title as source_label, promote real title
-                    if not t.source_label:
-                        t.source_label = t.title
-                    real_title = fields.get("title_ar") or fields.get("title_en")
-                    if real_title:
-                        t.title = real_title
-
-                    for k, v in fields.items():
-                        setattr(t, k, v)
-
-                    changes.append((t, before, _snapshot(t)))
-        finally:
-            try:
-                scraper.close_playwright()
-            except Exception:
-                pass
-
-        if args.dry_run:
-            db.rollback()
-            print("\n🧪 DRY RUN — no changes written.", flush=True)
-        else:
-            db.commit()
-            print("\n💾 Committed updates.", flush=True)
-
-        # before/after table
-        print("\n── PER-ROW BEFORE → AFTER ──", flush=True)
-        for t, before, after in changes:
-            print(json.dumps({"before": before, "after": after}, ensure_ascii=False), flush=True)
-
-        print(f"\n🧮 Claude page_extract calls this run: {page_calls}", flush=True)
-        print("\n── AFTER quality report (scoped) ──", flush=True)
-        if not args.dry_run:
-            print(json.dumps(build_quality_report(db, ids=target_ids), ensure_ascii=False, indent=2), flush=True)
-        return 0
     finally:
         db.close()
+
+    groups = defaultdict(list)
+    for m in meta:
+        e, p = _edition_page(m["url"] or "")
+        groups[(e, p)].append(m)
+
+    # ── PHASE 2: render + extract (NO DB connection held) ────────────────────
+    from app.scraper.kuwaitalyom_scraper import KuwaitAlyomScraper
+    from app.ai.page_extractor import extract_page
+    from app.services.extraction_pipeline import apply_block_to_fields
+    from app.services import extraction_quality as eq
+
+    scraper = KuwaitAlyomScraper(
+        username=settings.KUWAIT_ALYOM_USERNAME,
+        password=settings.KUWAIT_ALYOM_PASSWORD,
+    )
+    if not scraper.login():
+        print("❌ Login failed.", flush=True)
+        return 1
+
+    updates: dict = {}   # id -> {fields..., _real_title, _old_title} | {"_no_match": True}
+    page_calls = 0
+    try:
+        for (edition, page), grp in groups.items():
+            if not edition or not page:
+                for m in grp:
+                    updates[m["id"]] = {"_error": "unparseable_url"}
+                continue
+
+            print(f"\n📄 Page edition={edition} no={page} ({len(grp)} listing rows)", flush=True)
+            img = scraper._screenshot_page_with_playwright(edition, page)
+            if not img:
+                print("  ⚠️  Playwright failed; trying Browserless fallback", flush=True)
+                img = scraper._screenshot_page_with_browserless(edition, page)
+            if not img:
+                for m in grp:
+                    updates[m["id"]] = {"_error": "screenshot_failed"}
+                continue
+
+            page_calls += 1
+            result = extract_page(img, "png", source_page=f"{edition}/{page}")
+            blocks = result.get("tenders", [])
+            page_multi = result.get("page_contains_multiple_tenders", len(blocks) > 1)
+            page_text = "\n".join(str(b.get("body_text") or "") for b in blocks)
+            print(f"  🧩 extracted {len(blocks)} block(s), multi={page_multi}", flush=True)
+
+            for m in grp:
+                match = eq.match_block_to_listing(blocks, m["tender_number"], m["title"])
+                block = match["block"]
+                if not block:
+                    updates[m["id"]] = {"_no_match": True}
+                    continue
+                fields = apply_block_to_fields(
+                    block,
+                    listing_number=m["tender_number"],
+                    listing_title=m["title"],
+                    published_at=m["published_at"],
+                    page_text=page_text,
+                    page_multi=page_multi,
+                    match_strength=match["strength"],
+                    match_warnings=match["warnings"],
+                )
+                fields.pop("_match_strength", None)
+                fields["_real_title"] = fields.get("title_ar") or fields.get("title_en")
+                fields["_old_title"] = m["title"]
+                updates[m["id"]] = fields
+    finally:
+        try:
+            scraper.close_playwright()
+        except Exception:
+            pass
+
+    print(f"\n🧮 Claude page_extract calls this run: {page_calls}", flush=True)
+
+    if args.dry_run:
+        print("\n🧪 DRY RUN — no changes written.", flush=True)
+        print("\n── PER-ROW BEFORE → (proposed) ──", flush=True)
+        for tid, fields in updates.items():
+            print(json.dumps({"id": tid, "before": before_snaps.get(tid),
+                              "proposed_title": fields.get("_real_title"),
+                              "proposed_number": fields.get("tender_number"),
+                              "status": fields.get("extraction_quality_status"),
+                              "flags": {k: v for k, v in fields.items() if k.startswith("_")}},
+                             ensure_ascii=False), flush=True)
+        return 0
+
+    # ── PHASE 3: write on a FRESH session, commit per row ────────────────────
+    from datetime import datetime as _dt, timezone as _tz
+    after_snaps = {}
+    db = SessionLocal()
+    try:
+        for tid, fields in updates.items():
+            t = db.get(Tender, tid)
+            if t is None:
+                continue
+            if fields.get("_error") or fields.get("_no_match"):
+                t.extraction_quality_status = "needs_review"
+                t.needs_review = True
+                reason = "listing_match_weak" if fields.get("_no_match") else fields.get("_error")
+                t.extraction_warnings = list(dict.fromkeys((t.extraction_warnings or []) + [reason]))
+                t.ai_processed_at = _dt.now(_tz.utc)
+                db.commit()
+                after_snaps[tid] = _snapshot(t)
+                continue
+
+            real_title = fields.pop("_real_title", None)
+            old_title = fields.pop("_old_title", None)
+            if not t.source_label:
+                t.source_label = old_title or t.title
+            if real_title:
+                t.title = real_title
+            for k, v in fields.items():
+                if k.startswith("_"):
+                    continue
+                setattr(t, k, v)
+            try:
+                db.commit()
+                after_snaps[tid] = _snapshot(t)
+            except Exception as e:
+                db.rollback()
+                print(f"  ❌ write failed for #{tid}: {e}", flush=True)
+
+        print("\n💾 Committed updates (per-row).", flush=True)
+        print("\n── PER-ROW BEFORE → AFTER ──", flush=True)
+        for tid in updates:
+            print(json.dumps({"id": tid, "before": before_snaps.get(tid),
+                              "after": after_snaps.get(tid)}, ensure_ascii=False), flush=True)
+
+        print("\n── AFTER quality report (scoped) ──", flush=True)
+        print(json.dumps(build_quality_report(db, ids=list(updates.keys())),
+                         ensure_ascii=False, indent=2), flush=True)
+    finally:
+        db.close()
+    return 0
 
 
 if __name__ == "__main__":
