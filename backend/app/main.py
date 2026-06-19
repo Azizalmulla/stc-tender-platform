@@ -6,6 +6,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from app.core.config import settings
 from app.api import tenders, search, chat, cron, notifications, meetings, export, analytics, clients
+from app.api.visibility import VisibilityMiddleware
 
 
 scheduler = BackgroundScheduler(timezone="UTC")
@@ -48,6 +49,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Quality-gating: record per-request tender visibility (public => clean only).
+# Pure-ASGI so the contextvar reaches endpoint DB queries.
+app.add_middleware(VisibilityMiddleware)
+
 # Add proxy headers middleware FIRST (before CORS)
 app.add_middleware(ProxyHeadersMiddleware)
 
@@ -61,7 +66,10 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Include routers
+# Visibility gating is applied globally by VisibilityMiddleware: public callers
+# see `clean` only; a valid ADMIN_TOKEN/CRON_SECRET (Bearer or X-Admin-Token)
+# unlocks the full set, with an optional ?view=clean|needs_review|failed|all
+# toggle. Cron/admin endpoints already require that token, so they see everything.
 app.include_router(tenders.router, prefix="/api/tenders", tags=["tenders"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])

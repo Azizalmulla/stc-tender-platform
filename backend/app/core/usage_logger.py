@@ -27,14 +27,17 @@ _PRICING_PER_MTOK = {
     "anthropic:default": (3.0, 15.0),
     "openai:gpt-4o": (2.5, 10.0),
     "openai:gpt-4o-mini": (0.15, 0.6),
+    "openai:gpt-5.4-mini": (0.25, 2.0),  # APPROXIMATE — update when official pricing is known
     "voyage:voyage-law-2": (0.12, 0.0),  # embeddings: input-only
     "voyage:default": (0.12, 0.0),
 }
 
 # Flat per-unit cost for non-token services (USD per call). Browserless is
 # billed per unit/second; this is a rough placeholder for visibility only.
+# Mistral OCR 3 is billed per page (~$2/1k OCR, ~$3/1k with annotations).
 _FLAT_COST = {
     "browserless:screenshot": 0.0015,
+    "mistral:page_extract": 0.003,  # OCR + document_annotation, ~$3 / 1000 pages
 }
 
 

@@ -1,10 +1,19 @@
 """
-Phase 2 — page-level multi-tender extractor.
+Phase 2 — page-level multi-tender extractor (provider-dispatching).
 
-ONE Claude Vision call per rendered page. The model segments the page into
-logical tender blocks and returns a strict JSON array — it must NOT force a
-multi-tender page into a single row. Deterministic validation happens afterwards
-in `app.services.extraction_quality` (the model proposes, rules verify).
+ONE extraction call per rendered page. The model segments the page into logical
+tender blocks and returns a strict JSON array — it must NOT force a multi-tender
+page into a single row. Deterministic validation happens afterwards in
+`app.services.extraction_quality` (the model proposes, rules verify).
+
+Backends (see settings.PAGE_EXTRACTOR_PROVIDER):
+  * "anthropic" → Claude Vision (one messages.create call). Production default.
+  * "openai"    → OpenAI vision (gpt-5.4-mini), one image/page chat call.
+                   Falls back to Claude on error.
+  * "mistral"   → Mistral OCR 3 (mistral-ocr-2512), one OCR+document_annotation
+                   call (~$0.003/page). Falls back to Claude on error.
+                   NOTE: fails on Kuwait Al-Yawm flipbook pages (reads furniture,
+                   hallucinates) — not safe as primary for this content.
 
 This replaces the old per-listing flow that made 4 Claude calls per listing and
 re-OCR'd the whole two-page spread each time (the contamination + cost bug).
@@ -96,10 +105,46 @@ def extract_page(
     image_format: str = "png",
     source_page: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run one Vision call and return {page_contains_multiple_tenders, tenders:[...]}.
+    """Run ONE page-level extraction and return {page_contains_multiple_tenders, tenders:[...]}.
 
-    On failure returns a structured failure dict (never raises into the pipeline).
+    Provider is chosen by settings.PAGE_EXTRACTOR_PROVIDER:
+      * "mistral"   → Mistral OCR 3 (cheap, default). Falls back to Claude on
+                       error when settings.PAGE_EXTRACTOR_FALLBACK is true.
+      * "anthropic" → Claude Vision only.
+
+    Never raises into the pipeline; returns a structured failure dict instead.
     """
+    provider = (settings.PAGE_EXTRACTOR_PROVIDER or "anthropic").lower()
+
+    if provider == "mistral":
+        from app.ai.mistral_extractor import extract_page_mistral
+        result = extract_page_mistral(image_bytes, image_format=image_format, source_page=source_page)
+        if not result.get("error"):
+            return result
+        if settings.PAGE_EXTRACTOR_FALLBACK and claude_service is not None:
+            print(f"↩️  falling back to Claude for {source_page} (mistral error: {result.get('error')})")
+            return _extract_page_claude(image_bytes, image_format=image_format, source_page=source_page)
+        return result
+
+    if provider == "openai":
+        from app.ai.openai_extractor import extract_page_openai
+        result = extract_page_openai(image_bytes, image_format=image_format, source_page=source_page)
+        if not result.get("error"):
+            return result
+        if settings.PAGE_EXTRACTOR_FALLBACK and claude_service is not None:
+            print(f"↩️  falling back to Claude for {source_page} (openai error: {result.get('error')})")
+            return _extract_page_claude(image_bytes, image_format=image_format, source_page=source_page)
+        return result
+
+    return _extract_page_claude(image_bytes, image_format=image_format, source_page=source_page)
+
+
+def _extract_page_claude(
+    image_bytes: bytes,
+    image_format: str = "png",
+    source_page: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Run one Claude Vision call and return {page_contains_multiple_tenders, tenders:[...]}."""
     from app.core.usage_logger import log_usage, extract_anthropic_usage
 
     if claude_service is None:

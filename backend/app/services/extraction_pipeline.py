@@ -85,6 +85,7 @@ def apply_block_to_fields(
         announcement_type=ann_type,
         overall_confidence=overall_conf,
         warnings=warnings,
+        match_strength=match_strength,
     )
 
     title_ar = (block.get("title_ar") or "").strip() or None

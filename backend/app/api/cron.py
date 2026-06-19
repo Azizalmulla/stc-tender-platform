@@ -602,6 +602,21 @@ def run_scrape_task_v2(days_back: int = 7):
         except Exception:
             pass
 
+    # Finalizer: flag any rows that ended up sharing a tender number (ambiguous
+    # duplicates are never shown publicly — they go to needs_review).
+    duplicates_flagged = 0
+    try:
+        from app.services import extraction_quality as _eq
+        _db = SessionLocal()
+        try:
+            duplicates_flagged = _eq.flag_duplicate_numbers(_db)
+        finally:
+            _db.close()
+        if duplicates_flagged:
+            print(f"  🔁 flagged {duplicates_flagged} rows as duplicate_tender_number (needs_review)")
+    except Exception as e:
+        print(f"  ⚠️ duplicate flagging skipped: {e}")
+
     result = {
         "status": "success",
         "engine": "page_extractor_v2",
@@ -610,8 +625,9 @@ def run_scrape_task_v2(days_back: int = 7):
         "skipped": total_skipped,
         "errors": total_errors,
         "page_extract_calls": total_page_calls,
+        "duplicates_flagged": duplicates_flagged,
     }
-    print(f"\n✅ [v2] processed={total_processed} skipped={total_skipped} errors={total_errors} pages={total_page_calls}")
+    print(f"\n✅ [v2] processed={total_processed} skipped={total_skipped} errors={total_errors} pages={total_page_calls} dupes={duplicates_flagged}")
     return result
 
 
@@ -652,19 +668,20 @@ def _save_block_row(scraper, raw, category, assignment, page_multi,
         synthetic_label = f"{listing_title} - Edition {edition_no}"
 
         if not block:
-            # no usable block on the page → store a needs_review stub, no fabricated data
+            # no usable block on the page → store a FAILED stub, no fabricated data
             tender = Tender(
                 url=url, hash=content_hash, published_at=published_at, category=category,
                 lang="ar", title=synthetic_label, source_label=synthetic_label,
                 tender_number=None, body=None,
-                extraction_quality_status="needs_review", needs_review=True,
-                extraction_warnings=["listing_match_weak"] + (["multi_tender_page"] if page_multi else []),
+                extraction_quality_status="failed", needs_review=True,
+                extraction_warnings=["listing_match_none", "no_body_extracted"]
+                + (["multi_tender_page"] if page_multi else []),
                 ai_processed_at=datetime.now(_tz.utc),
             )
             db.add(tender)
             db.commit()
             existing_urls.add(url); existing_hashes.add(content_hash)
-            print(f"    ⚠️  saved needs_review stub #{tender.id} (no block match)")
+            print(f"    ⚠️  saved failed stub #{tender.id} (no block match)")
             return tender.id
 
         fields = apply_block_to_fields(

@@ -43,8 +43,14 @@ def _norm(s: Optional[str]) -> str:
 
 
 def normalize_number(s: Optional[str]) -> str:
-    """Canonical form for comparing two tender numbers (drop spaces/separators)."""
-    return re.sub(r"[\s/\\\-_.]", "", _norm(s)).upper()
+    """Canonical form for comparing two tender numbers.
+
+    Keep ONLY alphanumerics — drop ALL separators and brackets (spaces, / \\ - _ .
+    ( ) [ ] { } # : , …). Tender numbers are Latin letters + digits (Arabic digits
+    are converted to Latin by _norm first), so OCR noise like "(293-11-25)" and a
+    listing's "2931125" canonicalise to the same key and match correctly.
+    """
+    return re.sub(r"[^0-9A-Za-z]", "", _norm(s)).upper()
 
 
 def _is_garbage_number(s: str) -> bool:
@@ -318,7 +324,7 @@ def match_block_to_listing(
     """
     warnings: List[str] = []
     if not blocks:
-        return {"block": None, "strength": "none", "warnings": ["listing_match_weak"]}
+        return {"block": None, "strength": "none", "warnings": ["listing_match_none"]}
 
     ln = normalize_number(listing_number)
     if ln:
@@ -345,7 +351,7 @@ def match_block_to_listing(
     if len(blocks) == 1:
         return {"block": blocks[0], "strength": "weak", "warnings": ["listing_match_weak"]}
 
-    return {"block": None, "strength": "none", "warnings": ["listing_match_weak"]}
+    return {"block": None, "strength": "none", "warnings": ["listing_match_none"]}
 
 
 def assign_blocks_to_listings(
@@ -403,13 +409,29 @@ def assign_blocks_to_listings(
         pool.clear()
 
     for L in listings:
-        result.setdefault(L["id"], {"block": None, "strength": "none", "warnings": ["listing_match_weak"]})
+        result.setdefault(L["id"], {"block": None, "strength": "none", "warnings": ["listing_match_none"]})
     return result
 
 
 # ── Roll-up status ──────────────────────────────────────────────────────────
 
-_BLOCKING_WARNINGS = {"ambiguous_tender_number", "listing_match_weak", "json_leak_unrecovered"}
+# Warnings that always force a row out of `clean`. NOTE: `listing_match_weak` is
+# deliberately NOT here — a weak block↔listing linkage does not make the row's
+# DISPLAYED fields wrong (they come from the validated block), and on this source
+# the listing carries no tender number to match against, so "weak" is the common
+# (and usually correct) case. We instead escalate weak matches only when the
+# block's own number is low-confidence (see below), and we catch genuine problems
+# via `duplicate_tender_number`. `listing_match_none` (no block at all) stays
+# blocking, but that path also has no body → it resolves to `failed`.
+_BLOCKING_WARNINGS = {
+    "ambiguous_tender_number",
+    "json_leak_unrecovered",
+    "duplicate_tender_number",
+    "listing_match_none",
+}
+
+# Strength of a block's own number above which a "weak" listing linkage is OK.
+_WEAK_MATCH_TRUST_CONF = 0.8
 
 
 def compute_quality_status(
@@ -420,27 +442,111 @@ def compute_quality_status(
     announcement_type: Optional[str],
     overall_confidence: Optional[float],
     warnings: List[str],
+    match_strength: str = "strong",
+    missing_deadline_blocks: Optional[bool] = None,
+    weak_match_blocks: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """Roll warnings + confidences into clean | needs_review | failed."""
+    """Roll warnings + confidences into clean | needs_review | failed.
+
+    Every reason a row is NOT clean is appended to `warnings` so downstream
+    (admin UI / report) can show exactly why. Policy knobs (default relaxed):
+      - missing_deadline_blocks: if False, a deadline that simply isn't printed
+        on the page is a *warning*, not a blocker (this gazette rarely prints it).
+      - weak_match_blocks: if False, a weak block↔listing linkage only blocks
+        when the block's own tender number is also low-confidence.
+    """
+    try:
+        from app.core.config import settings
+    except Exception:  # pragma: no cover - settings always importable in app
+        settings = None
+    if missing_deadline_blocks is None:
+        missing_deadline_blocks = bool(getattr(settings, "QUALITY_MISSING_DEADLINE_BLOCKS", False))
+    if weak_match_blocks is None:
+        weak_match_blocks = bool(getattr(settings, "QUALITY_WEAK_MATCH_BLOCKS", False))
+
     w = list(dict.fromkeys(warnings))
 
-    if not has_body:
-        return {"status": "failed", "needs_review": True, "warnings": w + ["no_body_extracted"]}
+    # No body / no block at all → failed extraction, always review.
+    if not has_body or match_strength == "none":
+        for extra in ("no_body_extracted", "listing_match_none"):
+            if extra not in w:
+                w.append(extra)
+        return {"status": "failed", "needs_review": True, "warnings": w}
 
     needs = False
-    if (overall_confidence is not None and overall_confidence < 0.5):
+
+    if overall_confidence is not None and overall_confidence < 0.5:
         needs = True
+        if "low_overall_confidence" not in w:
+            w.append("low_overall_confidence")
+
     if tender_number_conf is not None and tender_number_conf < 0.65:
         needs = True
         if "ambiguous_tender_number" not in w:
             w.append("ambiguous_tender_number")
+
+    # Missing deadline — warn (so it's visible), block only if configured.
     if deadline_missing_reason == "no_deadline_found_on_page" and announcement_type in (None, "NewTender"):
-        needs = True
         if "missing_deadline" not in w:
             w.append("missing_deadline")
+        if missing_deadline_blocks:
+            needs = True
+    # A deadline that predates publication is a real data error → always block.
     if deadline_missing_reason == "deadline_before_publication":
         needs = True
+
+    # Weak block↔listing linkage. Safe to keep clean when the block's own number
+    # is high-confidence; otherwise escalate to review.
+    if "listing_match_weak" in w or match_strength == "weak":
+        if "listing_match_weak" not in w:
+            w.append("listing_match_weak")
+        weak_unsafe = (
+            weak_match_blocks
+            or tender_number_conf is None
+            or tender_number_conf < _WEAK_MATCH_TRUST_CONF
+        )
+        if weak_unsafe:
+            needs = True
+            if "weak_match_low_confidence" not in w:
+                w.append("weak_match_low_confidence")
+
     if any(bw in w for bw in _BLOCKING_WARNINGS):
         needs = True
 
     return {"status": "needs_review" if needs else "clean", "needs_review": needs, "warnings": w}
+
+
+def flag_duplicate_numbers(db) -> int:
+    """Mark every non-failed row whose tender_number is shared by another row as
+    needs_review + `duplicate_tender_number`. Conservative: we never auto-merge,
+    we just refuse to surface ambiguous duplicates publicly. Returns rows touched.
+    """
+    from sqlalchemy import func
+    from app.models.tender import Tender
+
+    dupes = (
+        db.query(Tender.tender_number)
+        .filter(Tender.tender_number.isnot(None), Tender.tender_number != "")
+        .filter((Tender.extraction_quality_status.is_(None)) | (Tender.extraction_quality_status != "failed"))
+        .group_by(Tender.tender_number)
+        .having(func.count() > 1)
+        .all()
+    )
+    nums = [d[0] for d in dupes]
+    if not nums:
+        return 0
+
+    rows = db.query(Tender).filter(Tender.tender_number.in_(nums)).all()
+    touched = 0
+    for t in rows:
+        if t.extraction_quality_status == "failed":
+            continue
+        w = list(t.extraction_warnings or [])
+        if "duplicate_tender_number" not in w:
+            w.append("duplicate_tender_number")
+        t.extraction_warnings = w
+        t.extraction_quality_status = "needs_review"
+        t.needs_review = True
+        touched += 1
+    db.commit()
+    return touched
