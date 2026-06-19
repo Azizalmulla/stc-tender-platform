@@ -34,7 +34,8 @@ echo "⚠️  Skipping Alembic migrations (broken chain - will fix later)"
 echo "✅ All database schema updates applied via SQL"
 
 echo "Starting application..."
-# On Render: ALWAYS use proxy headers (Render runs behind a proxy)
-# Trust private network ranges (Render's internal routing)
-echo "🚀 Starting uvicorn with proxy header support"
+# VPS deployment: the Caddy container terminates TLS and reverse-proxies to this
+# service over the Docker bridge network. Trust the private Docker/LAN ranges so
+# X-Forwarded-Proto (https) is honoured (172.16.0.0/12 covers Docker bridges).
+echo "🚀 Starting uvicorn with proxy header support (behind Caddy)"
 uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'

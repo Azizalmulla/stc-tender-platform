@@ -6,7 +6,7 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
 
-BASE_URL = os.getenv("STC_BACKEND_URL", "https://stc-tender-platform.onrender.com").rstrip("/")
+BASE_URL = os.getenv("STC_BACKEND_URL", "http://localhost:8000").rstrip("/")
 
 
 def http_get(path: str):
