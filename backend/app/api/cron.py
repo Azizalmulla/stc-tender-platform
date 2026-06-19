@@ -31,7 +31,12 @@ def run_scrape_task(days_back: int = 7):
         days_back: Number of days to scrape back (default 30)
     """
     import gc  # For memory management
-    
+
+    # Phase 2: prefer the page-level multi-tender extractor (1 Claude call/page,
+    # array of tender blocks, matched to listings). Falls back to legacy if off.
+    if getattr(settings, "ENABLE_PAGE_EXTRACTOR", True):
+        return run_scrape_task_v2(days_back=days_back)
+
     try:
         print(f"🤖 Starting scrape from Kuwait Al-Yawm (Official Gazette) at {datetime.now()}")
         print(f"📅 Scraping last {days_back} days")
@@ -473,6 +478,219 @@ Text:
         db.rollback()
         db.close()
         return None
+
+
+def run_scrape_task_v2(days_back: int = 7):
+    """
+    Phase 2 page-level scrape: render each gazette page ONCE, extract an ARRAY of
+    tender blocks, match each block to its listing row, validate deterministically,
+    then save clean rows (or mark needs_review). One Claude Vision call per UNIQUE
+    page instead of 4 per listing — fixes both contamination and cost.
+
+    NON-destructive: only inserts NEW listings (hash dedup). Respects the per-run
+    cost cap. Never wipes anything.
+    """
+    import gc
+    from datetime import timezone as _tz
+    from collections import defaultdict
+
+    from app.ai.page_extractor import extract_page
+    from app.services.extraction_pipeline import apply_block_to_fields
+    from app.services import extraction_quality as eq
+
+    print(f"🤖 [v2 page-extractor] Scrape from Kuwait Al-Yawm at {datetime.now()} (last {days_back}d)")
+
+    username = settings.KUWAIT_ALYOM_USERNAME
+    password = settings.KUWAIT_ALYOM_PASSWORD
+    if not username or not password:
+        raise HTTPException(status_code=500, detail="Kuwait Alyom credentials not configured")
+
+    scraper = KuwaitAlyomScraper(username=username, password=password)
+    if not scraper.login():
+        raise HTTPException(status_code=500, detail="Kuwait Alyom login failed")
+
+    categories = [("1", "Tenders"), ("2", "Auctions"), ("18", "Practices")]
+    category_map = {"1": "tenders", "2": "auctions", "18": "practices"}
+    max_per_run = getattr(settings, "MAX_TENDERS_PER_RUN", 120)
+
+    total_processed = 0
+    total_skipped = 0
+    total_errors = 0
+    total_page_calls = 0
+
+    try:
+        for category_id, category_name in categories:
+            print(f"\n{'='*60}\n📊 {category_name}\n{'='*60}")
+            raw_listings = scraper.fetch_listings_only(category_id=category_id, days_back=days_back, limit=200)
+            if not raw_listings:
+                continue
+
+            db = SessionLocal()
+            try:
+                existing_hashes = set(h[0] for h in db.query(Tender.hash).all() if h[0])
+                existing_urls = set(u[0] for u in db.query(Tender.url).all() if u[0])
+            finally:
+                db.close()
+
+            # keep only NEW listings, then group by source page
+            new_listings = []
+            for raw in raw_listings:
+                if (total_processed + len(new_listings)) >= max_per_run:
+                    print(f"  🛑 Reached per-run cap ({max_per_run}) — stopping intake for this category")
+                    break
+                h = scraper.calculate_tender_hash(raw)
+                if h in existing_hashes:
+                    total_skipped += 1
+                    continue
+                new_listings.append(raw)
+
+            pages = defaultdict(list)
+            for raw in new_listings:
+                edition_id = raw.get('EditionID_FK')
+                page_number = raw.get('FromPage')
+                pages[(edition_id, page_number)].append(raw)
+
+            print(f"  🆕 {len(new_listings)} new listings across {len(pages)} pages")
+
+            for (edition_id, page_number), grp in pages.items():
+                if not edition_id or not page_number:
+                    total_errors += len(grp)
+                    continue
+                try:
+                    img = scraper._screenshot_page_with_playwright(edition_id, page_number)
+                    if not img:
+                        print(f"  💸 Playwright failed — Browserless fallback for {edition_id}/{page_number}")
+                        img = scraper._screenshot_page_with_browserless(edition_id, page_number)
+                    if not img:
+                        total_errors += len(grp)
+                        continue
+
+                    total_page_calls += 1
+                    result = extract_page(img, "png", source_page=f"{edition_id}/{page_number}")
+                    blocks = result.get("tenders", [])
+                    page_multi = result.get("page_contains_multiple_tenders", len(blocks) > 1)
+                    page_text = "\n".join(str(b.get("body_text") or "") for b in blocks)
+
+                    for raw in grp:
+                        try:
+                            saved = _save_block_row(
+                                scraper, raw, category_map.get(category_id, "tenders"),
+                                blocks, page_multi, page_text, existing_urls, existing_hashes,
+                                eq, apply_block_to_fields,
+                            )
+                            if saved:
+                                total_processed += 1
+                            else:
+                                total_errors += 1
+                        except Exception as e:
+                            print(f"    ❌ row save failed: {e}")
+                            total_errors += 1
+                    gc.collect()
+                except Exception as e:
+                    print(f"  ❌ page {edition_id}/{page_number} failed: {e}")
+                    total_errors += len(grp)
+                    gc.collect()
+    finally:
+        try:
+            scraper.close_playwright()
+        except Exception:
+            pass
+
+    result = {
+        "status": "success",
+        "engine": "page_extractor_v2",
+        "timestamp": datetime.now().isoformat(),
+        "processed": total_processed,
+        "skipped": total_skipped,
+        "errors": total_errors,
+        "page_extract_calls": total_page_calls,
+    }
+    print(f"\n✅ [v2] processed={total_processed} skipped={total_skipped} errors={total_errors} pages={total_page_calls}")
+    return result
+
+
+def _save_block_row(scraper, raw, category, blocks, page_multi, page_text,
+                    existing_urls, existing_hashes, eq, apply_block_to_fields) -> int:
+    """Create one clean Tender row from a matched page block. Returns id or None."""
+    from datetime import timezone as _tz
+
+    edition_id = raw.get('EditionID_FK')
+    page_number = raw.get('FromPage')
+    tender_id = raw.get('ID')
+    edition_no = raw.get('EditionNo', '')
+    listing_title = raw.get('AdsTitle', '')
+    published_at = scraper._parse_edition_date(raw)
+    url = f"{scraper.base_url}/flip/index?id={edition_id}&no={page_number}#tender-{tender_id}"
+    content_hash = scraper.calculate_tender_hash(raw)
+
+    if url in existing_urls or content_hash in existing_hashes:
+        return None  # idempotent guard
+
+    match = eq.match_block_to_listing(blocks, listing_title, listing_title)
+    block = match["block"]
+
+    db = SessionLocal()
+    try:
+        synthetic_label = f"{listing_title} - Edition {edition_no}"
+
+        if not block:
+            # no usable block on the page → store a needs_review stub, no fabricated data
+            tender = Tender(
+                url=url, hash=content_hash, published_at=published_at, category=category,
+                lang="ar", title=synthetic_label, source_label=synthetic_label,
+                tender_number=None, body=None,
+                extraction_quality_status="needs_review", needs_review=True,
+                extraction_warnings=["listing_match_weak"] + (["multi_tender_page"] if page_multi else []),
+                ai_processed_at=datetime.now(_tz.utc),
+            )
+            db.add(tender)
+            db.commit()
+            existing_urls.add(url); existing_hashes.add(content_hash)
+            print(f"    ⚠️  saved needs_review stub #{tender.id} (no block match)")
+            return tender.id
+
+        fields = apply_block_to_fields(
+            block,
+            listing_number=listing_title,
+            listing_title=listing_title,
+            published_at=published_at,
+            page_text=page_text,
+            page_multi=page_multi,
+            match_strength=match["strength"],
+            match_warnings=match["warnings"],
+        )
+        fields.pop("_match_strength", None)
+
+        real_title = fields.get("title_ar") or fields.get("title_en") or synthetic_label
+
+        tender = Tender(
+            url=url, hash=content_hash, published_at=published_at, category=category,
+            lang="ar", title=real_title, source_label=synthetic_label,
+        )
+        for k, v in fields.items():
+            setattr(tender, k, v)
+        db.add(tender)
+        db.flush()
+
+        # one embedding per tender (RAG/chat) — built from clean text
+        try:
+            emb_text = f"{real_title}\n{fields.get('summary_ar') or ''}\n{(fields.get('body') or '')[:4000]}"
+            embedding = voyage_service.generate_embedding(emb_text, input_type="document")
+            if embedding:
+                db.add(TenderEmbedding(tender_id=tender.id, embedding=embedding))
+        except Exception as e:
+            print(f"    ⚠️ embedding failed: {e}")
+
+        db.commit()
+        existing_urls.add(url); existing_hashes.add(content_hash)
+        print(f"    ✅ saved #{tender.id} [{fields.get('extraction_quality_status')}] {real_title[:40]}")
+        return tender.id
+    except Exception as e:
+        db.rollback()
+        print(f"    ❌ _save_block_row error: {e}")
+        return None
+    finally:
+        db.close()
 
 
 @router.post("/scrape-weekly")
@@ -1551,5 +1769,41 @@ async def usage_report(hours: int = 24, authorization: Optional[str] = Header(No
             "totals": totals,
             "breakdown": sorted(breakdown, key=lambda x: -x["estimated_cost_usd"]),
         }
+    finally:
+        db.close()
+
+
+@router.get("/quality-report")
+async def quality_report(
+    ids: Optional[str] = None,
+    sample: int = 10,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Phase 2 data-quality report (read-only).
+
+    Reports extraction trust metrics: clean/needs_review/failed, missing real
+    titles, missing deadlines, ambiguous numbers, multi-tender pages, JSON leaks,
+    duplicate numbers, and sector confidence distribution.
+
+    Optional `ids` (comma-separated) scopes the report to a specific sample, e.g.
+    the targeted reprocess set.
+    """
+    cron_secret = settings.CRON_SECRET if hasattr(settings, 'CRON_SECRET') else None
+    if cron_secret and authorization != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    from app.services.quality_report import build_quality_report
+
+    id_list = None
+    if ids:
+        try:
+            id_list = [int(x) for x in ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ids must be comma-separated integers")
+
+    db = SessionLocal()
+    try:
+        return {"status": "success", "report": build_quality_report(db, sample_size=sample, ids=id_list)}
     finally:
         db.close()

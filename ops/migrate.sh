@@ -13,7 +13,7 @@ APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 COMPOSE="docker compose"
 cd "$APP_DIR"
 
-MIGRATIONS="add_fields.sql create_conversations_table.sql add_stc_export_fields.sql add_ai_enrichment_fields.sql add_export_tracking.sql add_cost_control_fields.sql"
+MIGRATIONS="add_fields.sql create_conversations_table.sql add_stc_export_fields.sql add_ai_enrichment_fields.sql add_export_tracking.sql add_cost_control_fields.sql add_extraction_quality_fields.sql"
 
 echo "==> Applying migrations: $MIGRATIONS"
 $COMPOSE run --rm -T tender-api sh -c '

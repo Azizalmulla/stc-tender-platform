@@ -62,6 +62,21 @@ class Tender(Base):
     ai_processed_at = Column(TIMESTAMP(timezone=True))  # When AI analysis was done
     value_extracted_at = Column(TIMESTAMP(timezone=True))  # When value/sector/award extraction last ran (idempotency guard)
     
+    # Phase 2 — document-intelligence / extraction-quality fields
+    title_ar = Column(Text)                       # Real Arabic subject/title of the tender
+    title_en = Column(Text)                       # Real English title (derived/translated)
+    source_label = Column(Text)                   # Legacy synthetic label e.g. "<number> - Edition N"
+    tender_number_confidence = Column(REAL)       # 0.0–1.0 confidence in tender_number
+    tender_number_candidates = Column(JSONB)      # All plausible numbers seen on the block
+    deadline_confidence = Column(REAL)            # 0.0–1.0 confidence in deadline
+    deadline_missing_reason = Column(Text)        # Why deadline is absent (not silently null)
+    extraction_json = Column(JSONB)               # Full structured model output for this tender block
+    extraction_quality_status = Column(Text)      # clean | needs_review | failed
+    extraction_warnings = Column(ARRAY(Text))     # e.g. multi_tender_page, ambiguous_tender_number...
+    sector_details = Column(JSONB)                # [{name, confidence, reason}] conservative tagging
+    source_page_block_index = Column(BigInteger)  # Which block on the page this row came from
+    needs_review = Column(Boolean, server_default='false')  # Flagged for human review
+    
     # Export tracking (prevents duplicate exports)
     exported_to_stc_at = Column(TIMESTAMP(timezone=True))  # When exported to STC Excel
     
@@ -74,6 +89,8 @@ class Tender(Base):
         Index('idx_tenders_status', 'status'),
         Index('idx_tenders_tender_number', 'tender_number'),
         Index('idx_tenders_announcement_type', 'announcement_type'),
+        Index('idx_tenders_quality_status', 'extraction_quality_status'),
+        Index('idx_tenders_needs_review', 'needs_review'),
     )
 
 

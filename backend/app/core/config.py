@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     # Hard ceiling on how many tenders a single scrape run will OCR/AI-process.
     # Protects against an accidental full-table reprocess blowing up cost.
     MAX_TENDERS_PER_RUN: int = 120
+
+    # ── Phase 2 extraction-quality flag ─────────────────────────────────────
+    # Use the page-level multi-tender extractor (ONE Claude Vision call per page,
+    # returns an array of tender blocks, matched back to listing rows) instead of
+    # the legacy per-listing flow (4 Claude calls per listing, re-OCR'd the whole
+    # spread → contamination). ON by default. Set false to fall back to legacy.
+    ENABLE_PAGE_EXTRACTOR: bool = True
     
     # Google Cloud Document AI (for PDF OCR)
     GOOGLE_CLOUD_PROJECT: Optional[str] = None

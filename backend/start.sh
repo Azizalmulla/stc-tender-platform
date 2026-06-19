@@ -28,6 +28,10 @@ psql $DATABASE_URL -f add_export_tracking.sql || echo "Export tracking migration
 echo "Adding cost-control fields and usage_logs table..."
 psql $DATABASE_URL -f add_cost_control_fields.sql || echo "Cost-control migration failed or already applied"
 
+# Phase 2: extraction-quality / document-intelligence columns
+echo "Adding extraction-quality fields..."
+psql $DATABASE_URL -f add_extraction_quality_fields.sql || echo "Extraction-quality migration failed or already applied"
+
 # Skip Alembic for now - it has a broken migration chain
 # We'll fix it properly later, but for now all necessary columns are added via SQL
 echo "⚠️  Skipping Alembic migrations (broken chain - will fix later)"
